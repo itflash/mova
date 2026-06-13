@@ -2990,6 +2990,16 @@ class AppState extends ChangeNotifier {
     Attachment attachment, {
     required _AttachmentAccessPurpose purpose,
   }) async {
+    if (attachment.storageProvider == StorageProvider.qiniu) {
+      final objectKey = attachment.objectKey?.trim();
+      final configuredDomain = settings.qiniuDomain.trim();
+      if (objectKey != null &&
+          objectKey.isNotEmpty &&
+          configuredDomain.isNotEmpty) {
+        return '${normalizePublicUrlBase(configuredDomain)}/${encodeObjectKeyForUrl(objectKey)}';
+      }
+      return attachment.url;
+    }
     if (attachment.storageProvider != StorageProvider.bitifulS4) {
       return attachment.url;
     }

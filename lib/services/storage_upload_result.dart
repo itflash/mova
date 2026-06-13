@@ -99,7 +99,7 @@ String normalizePublicUrlBase(String value) {
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     return trimmed;
   }
-  return 'https://$trimmed';
+  return 'http://$trimmed';
 }
 
 String encodeObjectKeyForUrl(String key) {

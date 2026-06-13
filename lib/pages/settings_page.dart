@@ -132,7 +132,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               title: '域名',
                               value: state.settings.qiniuDomain,
                               options: state.domainOptions,
-                              placeholder: 'https://',
+                              placeholder: 'http:// 或 https://',
                               onChanged: (value) => state.updateSettings(
                                 (current) =>
                                     current.copyWith(qiniuDomain: value),
@@ -688,66 +688,45 @@ class _BucketEditorRow extends StatelessWidget {
       builder: (context, compact) => Row(
         children: [
           Expanded(
-            child: options.isEmpty
-                ? TextField(
-                    controller: TextEditingController(text: value)
-                      ..selection = TextSelection.collapsed(
-                        offset: value.length,
-                      ),
-                    onChanged: onChanged,
-                    textAlign: compact ? TextAlign.left : TextAlign.right,
-                    maxLines: 1,
-                    style: Theme.of(context).textTheme.bodyLarge,
-                    decoration: InputDecoration(
-                      hintText: placeholder,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                    ),
-                  )
-                : DropdownButtonFormField<String>(
-                    isExpanded: true,
-                    initialValue: options.contains(value) ? value : null,
-                    decoration: InputDecoration(
-                      hintText: placeholder,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                    ),
-                    items: options
-                        .map(
-                          (item) => DropdownMenuItem(
-                            value: item,
-                            child: Text(
-                              item,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    selectedItemBuilder: (context) => options
-                        .map(
-                          (item) => Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              item,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      if (value == null) return;
-                      onChanged(value);
-                    },
-                  ),
+            child: TextField(
+              controller: TextEditingController(text: value)
+                ..selection = TextSelection.collapsed(offset: value.length),
+              onChanged: onChanged,
+              textAlign: compact ? TextAlign.left : TextAlign.right,
+              maxLines: 1,
+              style: Theme.of(context).textTheme.bodyLarge,
+              decoration: InputDecoration(
+                hintText: placeholder,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+              ),
+            ),
           ),
+          if (options.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            PopupMenuButton<String>(
+              tooltip: '选择已拉取项',
+              onSelected: onChanged,
+              itemBuilder: (context) {
+                return options
+                    .map<PopupMenuEntry<String>>(
+                      (item) => PopupMenuItem<String>(
+                        value: item,
+                        child: Text(
+                          item,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList();
+              },
+              icon: const Icon(Icons.arrow_drop_down_rounded),
+            ),
+          ],
           if (action != null) ...[const SizedBox(width: 8), action!],
         ],
       ),
