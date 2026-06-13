@@ -234,14 +234,17 @@ class _SettingsPageState extends State<SettingsPage> {
                                       ),
                               ),
                             ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Bitiful S4 通常使用默认 Endpoint 和 cn-east-1。自定义访问域名只有在你配置了 CDN 或绑定了自有域名时才需要填写。',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
                           ],
                         ),
                 ),
+                if (state.currentStorageProvider == StorageProvider.bitifulS4)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(2, 14, 2, 14),
+                    child: _SettingsHintCard(
+                      message:
+                          'Bitiful S4 通常使用默认 Endpoint 和 cn-east-1。自定义访问域名只有在你配置了 CDN 或绑定了自有域名时才需要填写。',
+                    ),
+                  ),
                 const PanelDivider(),
                 UtilityTile(
                   title: '配置状态',
@@ -785,6 +788,50 @@ class _SecureRow extends StatelessWidget {
             ),
           ),
           if (action != null) ...[const SizedBox(width: 4), action!],
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsHintCard extends StatelessWidget {
+  const _SettingsHintCard({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.42),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.tips_and_updates_outlined,
+            size: 16,
+            color: colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: theme.textTheme.bodySmall?.copyWith(
+                height: 1.45,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
         ],
       ),
     );
