@@ -8,6 +8,7 @@ import '../app/models.dart';
 import 'category_management_page.dart';
 import 'home_shell.dart';
 import 'image_create_page.dart';
+import 'video_frame_capture_page.dart';
 import '../widgets/attachment_media.dart';
 
 class LibraryPage extends StatelessWidget {
@@ -397,6 +398,51 @@ Future<void> _saveAttachmentToGallery(
         SnackBar(content: Text(state.cleanErrorForDisplay(error))),
       );
   }
+}
+
+Future<void> _openVideoFrameCaptureFromLibrary(
+  BuildContext context,
+  AppState state,
+  Attachment attachment,
+) async {
+  if (attachment.kind != AttachmentKind.video) return;
+  var localUri = attachment.localResourceUri?.trim() ?? '';
+  if (localUri.isEmpty) {
+    final confirmed = await confirmAction(
+      context,
+      title: '需要先下载视频',
+      message: '该视频当前只有云端版本，截帧前需要先下载到本地。是否现在下载？',
+      confirmLabel: '下载并继续',
+    );
+    if (!confirmed || !context.mounted) return;
+    final downloaded = await state.ensureAttachmentVideoLocal(attachment.id);
+    if (!downloaded || !context.mounted) return;
+    final refreshed = state.attachmentById(attachment.id);
+    localUri = refreshed?.localResourceUri?.trim() ?? '';
+    if (localUri.isEmpty) return;
+    final jumpNow = await confirmAction(
+      context,
+      title: '下载完成',
+      message: '视频已保存到本地，是否现在前往截帧页面？',
+      confirmLabel: '立即前往',
+    );
+    if (!jumpNow || !context.mounted) return;
+  }
+  await Navigator.of(context).push<bool>(
+    MaterialPageRoute(
+      builder: (_) => VideoFrameCapturePage(
+        source: VideoFrameSource(
+          type: VideoFrameSourceType.attachment,
+          label: attachment.label,
+          sourceUri: localUri,
+          attachmentId: attachment.id,
+          fileName: attachment.localFileName ?? attachment.fileName,
+        ),
+        entryContext: VideoFrameEntryContext.library,
+        defaultCategory: attachment.category,
+      ),
+    ),
+  );
 }
 
 Future<void> _openCategoryManagement(BuildContext context) async {
@@ -804,6 +850,18 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                       )
                     : null,
               ),
+              if (attachment.kind == AttachmentKind.video)
+                _AttachmentActionButton(
+                  icon: Icons.movie_creation_outlined,
+                  label: '截帧',
+                  onPressed: canAccess
+                      ? () => _openVideoFrameCaptureFromLibrary(
+                          context,
+                          state,
+                          attachment,
+                        )
+                      : null,
+                ),
               _AttachmentOverflowButton(
                 enabled: canAccess,
                 itemBuilder: (context) => [
@@ -846,9 +904,23 @@ class _AttachmentCardState extends State<_AttachmentCard> {
             ],
           ),
           const SizedBox(height: 12),
-          StatusPill(
-            label: _statusLabel(attachment.status),
-            tone: _statusColor(context, attachment.status),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              StatusPill(
+                label: _statusLabel(attachment.status),
+                tone: _statusColor(context, attachment.status),
+              ),
+              if (attachment.kind == AttachmentKind.video)
+                StatusPill(
+                  label: _localStatusLabel(attachment),
+                  tone: _localStatusColor(context, attachment),
+                  busy:
+                      attachment.localStatus ==
+                      AttachmentLocalStatus.downloading,
+                ),
+            ],
           ),
           const SizedBox(height: 14),
           Text('素材角色', style: Theme.of(context).textTheme.labelMedium),
@@ -965,6 +1037,33 @@ class _AttachmentCardState extends State<_AttachmentCard> {
       case AttachmentStatus.uploaded:
         return Colors.green.shade700;
       case AttachmentStatus.error:
+        return scheme.error;
+    }
+  }
+
+  String _localStatusLabel(Attachment attachment) {
+    switch (attachment.localStatus) {
+      case AttachmentLocalStatus.none:
+        return '仅云端';
+      case AttachmentLocalStatus.downloading:
+        return '下载中 ${attachment.localDownloadProgress}%';
+      case AttachmentLocalStatus.ready:
+        return '本地可截帧';
+      case AttachmentLocalStatus.error:
+        return '本地不可用';
+    }
+  }
+
+  Color _localStatusColor(BuildContext context, Attachment attachment) {
+    final scheme = Theme.of(context).colorScheme;
+    switch (attachment.localStatus) {
+      case AttachmentLocalStatus.none:
+        return scheme.onSurfaceVariant;
+      case AttachmentLocalStatus.downloading:
+        return scheme.tertiary;
+      case AttachmentLocalStatus.ready:
+        return scheme.primary;
+      case AttachmentLocalStatus.error:
         return scheme.error;
     }
   }

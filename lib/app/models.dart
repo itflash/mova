@@ -33,6 +33,8 @@ enum AttachmentKind { image, video, audio }
 
 enum AttachmentStatus { queued, uploading, uploaded, error }
 
+enum AttachmentLocalStatus { none, downloading, ready, error }
+
 enum LibraryFilter { all, image, video, audio }
 
 enum TaskStatus { submitted, inProgress, success, failure }
@@ -42,6 +44,10 @@ enum PollingStatus { idle, polling, paused, error }
 enum DownloadStatus { idle, downloading, success, error }
 
 enum ToolResolutionStatus { idle, loading, ready, error }
+
+enum VideoFrameEntryContext { library, createFirstFrame, createLastFrame, task }
+
+enum VideoFrameSourceType { localFile, attachment, task }
 
 class ModeOption {
   const ModeOption({required this.id, required this.title, required this.hint});
@@ -289,6 +295,12 @@ class Attachment {
     required this.createdAt,
     required this.status,
     required this.url,
+    this.localStatus = AttachmentLocalStatus.none,
+    this.localDownloadProgress = 0,
+    this.localResourceUri,
+    this.localFileName,
+    this.localUpdatedAt,
+    this.localErrorMessage,
     this.storageProvider = StorageProvider.qiniu,
     this.objectKey,
     this.storageBucket,
@@ -305,6 +317,12 @@ class Attachment {
   final DateTime createdAt;
   final AttachmentStatus status;
   final String url;
+  final AttachmentLocalStatus localStatus;
+  final int localDownloadProgress;
+  final String? localResourceUri;
+  final String? localFileName;
+  final DateTime? localUpdatedAt;
+  final String? localErrorMessage;
   final StorageProvider storageProvider;
   final String? objectKey;
   final String? storageBucket;
@@ -320,11 +338,21 @@ class Attachment {
     DateTime? createdAt,
     AttachmentStatus? status,
     String? url,
+    AttachmentLocalStatus? localStatus,
+    int? localDownloadProgress,
+    String? localResourceUri,
+    String? localFileName,
+    DateTime? localUpdatedAt,
+    String? localErrorMessage,
     StorageProvider? storageProvider,
     String? objectKey,
     String? storageBucket,
     String? storageEndpoint,
     String? storageRegion,
+    bool clearLocalResourceUri = false,
+    bool clearLocalFileName = false,
+    bool clearLocalUpdatedAt = false,
+    bool clearLocalErrorMessage = false,
   }) {
     return Attachment(
       id: id,
@@ -336,6 +364,20 @@ class Attachment {
       createdAt: createdAt ?? this.createdAt,
       status: status ?? this.status,
       url: url ?? this.url,
+      localStatus: localStatus ?? this.localStatus,
+      localDownloadProgress: localDownloadProgress ?? this.localDownloadProgress,
+      localResourceUri: clearLocalResourceUri
+          ? null
+          : (localResourceUri ?? this.localResourceUri),
+      localFileName: clearLocalFileName
+          ? null
+          : (localFileName ?? this.localFileName),
+      localUpdatedAt: clearLocalUpdatedAt
+          ? null
+          : (localUpdatedAt ?? this.localUpdatedAt),
+      localErrorMessage: clearLocalErrorMessage
+          ? null
+          : (localErrorMessage ?? this.localErrorMessage),
       storageProvider: storageProvider ?? this.storageProvider,
       objectKey: objectKey ?? this.objectKey,
       storageBucket: storageBucket ?? this.storageBucket,
@@ -343,6 +385,91 @@ class Attachment {
       storageRegion: storageRegion ?? this.storageRegion,
     );
   }
+}
+
+class VideoFrameSource {
+  const VideoFrameSource({
+    required this.type,
+    required this.label,
+    required this.sourceUri,
+    this.attachmentId,
+    this.taskId,
+    this.fileName,
+  });
+
+  final VideoFrameSourceType type;
+  final String label;
+  final String sourceUri;
+  final String? attachmentId;
+  final String? taskId;
+  final String? fileName;
+}
+
+class RecentVideoSource {
+  const RecentVideoSource({
+    required this.type,
+    required this.label,
+    required this.sourceUri,
+    required this.lastUsedAt,
+    this.attachmentId,
+    this.taskId,
+    this.fileName,
+  });
+
+  final VideoFrameSourceType type;
+  final String label;
+  final String sourceUri;
+  final DateTime lastUsedAt;
+  final String? attachmentId;
+  final String? taskId;
+  final String? fileName;
+
+  VideoFrameSource toVideoFrameSource() {
+    return VideoFrameSource(
+      type: type,
+      label: label,
+      sourceUri: sourceUri,
+      attachmentId: attachmentId,
+      taskId: taskId,
+      fileName: fileName,
+    );
+  }
+
+  RecentVideoSource copyWith({
+    VideoFrameSourceType? type,
+    String? label,
+    String? sourceUri,
+    DateTime? lastUsedAt,
+    String? attachmentId,
+    String? taskId,
+    String? fileName,
+  }) {
+    return RecentVideoSource(
+      type: type ?? this.type,
+      label: label ?? this.label,
+      sourceUri: sourceUri ?? this.sourceUri,
+      lastUsedAt: lastUsedAt ?? this.lastUsedAt,
+      attachmentId: attachmentId ?? this.attachmentId,
+      taskId: taskId ?? this.taskId,
+      fileName: fileName ?? this.fileName,
+    );
+  }
+}
+
+class CapturedFrameResult {
+  const CapturedFrameResult({
+    required this.path,
+    required this.uri,
+    required this.width,
+    required this.height,
+    required this.positionMs,
+  });
+
+  final String path;
+  final String uri;
+  final int width;
+  final int height;
+  final int positionMs;
 }
 
 class TaskRecord {

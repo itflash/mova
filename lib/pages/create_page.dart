@@ -6,8 +6,10 @@ import '../app/app_state.dart';
 import '../app/mock_data.dart';
 import '../app/models.dart';
 import 'home_shell.dart';
+import 'video_frame_capture_page.dart';
 import '../widgets/attachment_media.dart';
 import '../widgets/attachment_picker_sheet.dart';
+import '../widgets/video_frame_source_sheet.dart';
 
 class CreatePage extends StatefulWidget {
   const CreatePage({super.key});
@@ -93,6 +95,18 @@ class _CreatePageState extends State<CreatePage> {
                     ),
                     onPickLastFrame: state.activeMode == ModeId.firstLast
                         ? () => _openVideoFramePicker(
+                            context,
+                            state,
+                            role: AttachmentRole.lastFrame,
+                          )
+                        : null,
+                    onCaptureFirstFrame: () => _openFrameCaptureFlow(
+                      context,
+                      state,
+                      role: AttachmentRole.firstFrame,
+                    ),
+                    onCaptureLastFrame: state.activeMode == ModeId.firstLast
+                        ? () => _openFrameCaptureFlow(
                             context,
                             state,
                             role: AttachmentRole.lastFrame,
@@ -549,6 +563,30 @@ class _CreatePageState extends State<CreatePage> {
     );
     if (picked == null) return;
     state.selectVideoFrameAttachment(picked.id, role: role);
+  }
+
+  Future<void> _openFrameCaptureFlow(
+    BuildContext context,
+    AppState state, {
+    required AttachmentRole role,
+  }) async {
+    final source = await showVideoSourceSheet(
+      context: context,
+      state: state,
+      title: role == AttachmentRole.firstFrame ? '选择首帧视频来源' : '选择尾帧视频来源',
+      subtitle: '可以从本地视频、云端素材或任务结果里截取画面。',
+    );
+    if (source == null || !context.mounted) return;
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => VideoFrameCapturePage(
+          source: source,
+          entryContext: role == AttachmentRole.firstFrame
+              ? VideoFrameEntryContext.createFirstFrame
+              : VideoFrameEntryContext.createLastFrame,
+        ),
+      ),
+    );
   }
 
   Future<void> _openReplacementSheet(
@@ -1044,12 +1082,16 @@ class _VideoFrameSlots extends StatelessWidget {
     required this.onPreview,
     required this.onPickFirstFrame,
     this.onPickLastFrame,
+    required this.onCaptureFirstFrame,
+    this.onCaptureLastFrame,
   });
 
   final AppState state;
   final ValueChanged<Attachment> onPreview;
   final VoidCallback onPickFirstFrame;
   final VoidCallback? onPickLastFrame;
+  final VoidCallback onCaptureFirstFrame;
+  final VoidCallback? onCaptureLastFrame;
 
   @override
   Widget build(BuildContext context) {
@@ -1061,6 +1103,7 @@ class _VideoFrameSlots extends StatelessWidget {
         accentColor: const Color(0xFF2F80ED),
         pickLabel: '选择首帧',
         onPick: onPickFirstFrame,
+        onCapture: onCaptureFirstFrame,
         onPreview: state.selectedFirstFrameAttachment == null
             ? null
             : () => onPreview(state.selectedFirstFrameAttachment!),
@@ -1079,6 +1122,7 @@ class _VideoFrameSlots extends StatelessWidget {
           accentColor: const Color(0xFF159957),
           pickLabel: '选择尾帧',
           onPick: onPickLastFrame,
+          onCapture: onCaptureLastFrame,
           onPreview: state.selectedLastFrameAttachment == null
               ? null
               : () => onPreview(state.selectedLastFrameAttachment!),
@@ -1117,6 +1161,7 @@ class _VideoFrameSlotCard extends StatelessWidget {
     required this.accentColor,
     required this.pickLabel,
     required this.onPick,
+    required this.onCapture,
     this.attachment,
     this.onPreview,
     this.onClear,
@@ -1127,6 +1172,7 @@ class _VideoFrameSlotCard extends StatelessWidget {
   final Color accentColor;
   final String pickLabel;
   final VoidCallback? onPick;
+  final VoidCallback? onCapture;
   final Attachment? attachment;
   final VoidCallback? onPreview;
   final VoidCallback? onClear;
@@ -1170,21 +1216,35 @@ class _VideoFrameSlotCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (onClear != null)
-                IconButton(
-                  tooltip: '清空',
-                  onPressed: onClear,
-                  icon: const Icon(Icons.close_rounded, size: 18),
+              if (onClear != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '已选择',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: accentColor,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
+              ],
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           if (hasAttachment)
             InkWell(
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(20),
               onTap: onPreview,
               child: Ink(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: colorScheme.surface,
                   borderRadius: BorderRadius.circular(18),
@@ -1221,13 +1281,13 @@ class _VideoFrameSlotCard extends StatelessWidget {
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                           const SizedBox(height: 8),
-                          TextButton.icon(
-                            onPressed: onPick,
-                            icon: const Icon(
-                              Icons.swap_horiz_rounded,
-                              size: 16,
-                            ),
-                            label: const Text('更换素材'),
+                          Text(
+                            '点开预览或继续更换来源',
+                            style: Theme.of(context).textTheme.labelMedium
+                                ?.copyWith(
+                                  color: accentColor,
+                                  fontWeight: FontWeight.w700,
+                                ),
                           ),
                         ],
                       ),
@@ -1237,11 +1297,58 @@ class _VideoFrameSlotCard extends StatelessWidget {
               ),
             )
           else
-            OutlinedButton.icon(
-              onPressed: onPick,
-              icon: const Icon(Icons.add_photo_alternate_outlined),
-              label: Text(pickLabel),
+            Text(
+              '可以直接选择已有图片，或者先从本地/云端视频里截一帧作为起始画面。',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              FilledButton.icon(
+                onPressed: onPick,
+                icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
+                label: Text(hasAttachment ? '更换素材' : pickLabel),
+                style: FilledButton.styleFrom(
+                  backgroundColor: accentColor,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(0, 44),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: onCapture,
+                icon: const Icon(Icons.movie_creation_outlined, size: 18),
+                label: const Text('从视频截帧'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 44),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  side: BorderSide(color: accentColor.withValues(alpha: 0.28)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+              if (onClear != null)
+                TextButton.icon(
+                  onPressed: onClear,
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  label: const Text('清空'),
+                ),
+            ],
+          ),
         ],
       ),
     );

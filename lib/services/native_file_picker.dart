@@ -11,6 +11,14 @@ class NativeFilePicker {
         .map(PickedNativeFile.fromPlatformMap)
         .toList();
   }
+
+  Future<PickedLocalMediaFile?> pickSingleVideoFile() async {
+    final result = await _channel.invokeMapMethod<String, Object?>(
+      'pickSingleVideoFile',
+    );
+    if (result == null) return null;
+    return PickedLocalMediaFile.fromPlatformMap(result);
+  }
 }
 
 class PickedNativeFile {
@@ -38,5 +46,28 @@ class PickedNativeFile {
     required Uint8List bytes,
   }) {
     return PickedNativeFile(name: name, mimeType: mimeType, bytes: bytes);
+  }
+}
+
+class PickedLocalMediaFile {
+  const PickedLocalMediaFile({
+    required this.name,
+    required this.mimeType,
+    required this.uri,
+    this.path,
+  });
+
+  final String name;
+  final String mimeType;
+  final String uri;
+  final String? path;
+
+  factory PickedLocalMediaFile.fromPlatformMap(Map<Object?, Object?> value) {
+    return PickedLocalMediaFile(
+      name: value['name'] as String? ?? 'asset',
+      mimeType: value['mimeType'] as String? ?? 'application/octet-stream',
+      uri: value['uri'] as String? ?? '',
+      path: value['path'] as String?,
+    );
   }
 }

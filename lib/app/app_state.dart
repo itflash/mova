@@ -15,6 +15,7 @@ import '../services/qiniu_upload_service.dart';
 import '../services/seedance_service.dart';
 import '../services/image_generation_service.dart';
 import '../services/storage_upload_result.dart';
+import '../services/video_frame_service.dart';
 
 class AppState extends ChangeNotifier {
   static final RegExp promptTokenPattern = RegExp(r'@\{[^}]+\}');
@@ -24,6 +25,7 @@ class AppState extends ChangeNotifier {
   final BitifulS4UploadService _bitifulUploadService;
   final AppStorage _storage;
   final ImageGenerationService _imageGenerationService;
+  final VideoFrameService _videoFrameService;
   static const MethodChannel _mediaChannel = MethodChannel('mova/media');
   Timer? _persistDebounce;
   Timer? _pollingTimer;
@@ -40,13 +42,15 @@ class AppState extends ChangeNotifier {
     BitifulS4UploadService? bitifulUploadService,
     AppStorage? storage,
     ImageGenerationService? imageGenerationService,
+    VideoFrameService? videoFrameService,
   }) : _seedanceService = seedanceService ?? SeedanceService(),
        _filePicker = filePicker ?? NativeFilePicker(),
        _qiniuUploadService = qiniuUploadService ?? QiniuUploadService(),
        _bitifulUploadService = bitifulUploadService ?? BitifulS4UploadService(),
        _storage = storage ?? AppStorage(),
        _imageGenerationService =
-           imageGenerationService ?? ImageGenerationService() {
+           imageGenerationService ?? ImageGenerationService(),
+       _videoFrameService = videoFrameService ?? VideoFrameService() {
     _initializeToolResolutions();
     addListener(_schedulePersist);
   }
@@ -58,6 +62,7 @@ class AppState extends ChangeNotifier {
   SettingsState settings = settingsDefaults;
   final List<Attachment> library = [...initialLibrary];
   final List<TaskRecord> tasks = [...initialTasks];
+  final List<RecentVideoSource> recentVideoSources = [];
   final List<String> categories = [...defaultCategories];
   final List<String> selectedAttachmentIds = [];
   String? selectedFirstFrameAttachmentId;
@@ -219,6 +224,18 @@ class AppState extends ChangeNotifier {
 
   List<Attachment> get uploadedLibrary =>
       queryAttachments(uploadedOnly: true, sort: false);
+
+  List<RecentVideoSource> get visibleRecentVideoSources {
+    final byKey = <String, RecentVideoSource>{};
+    for (final source in recentVideoSources) {
+      final key =
+          '${source.type.name}|${source.attachmentId ?? ''}|${source.taskId ?? ''}|${source.sourceUri}';
+      byKey[key] = source;
+    }
+    final values = byKey.values.toList()
+      ..sort((a, b) => b.lastUsedAt.compareTo(a.lastUsedAt));
+    return values.take(8).toList();
+  }
 
   bool get usesFrameSlots =>
       activeMode == ModeId.firstFrame || activeMode == ModeId.firstLast;
@@ -2079,6 +2096,215 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  Future<PickedLocalMediaFile?> pickLocalVideoSource() {
+    return _filePicker.pickSingleVideoFile();
+  }
+
+  void rememberVideoFrameSource(VideoFrameSource source) {
+    final normalizedUri = source.sourceUri.trim();
+    if (normalizedUri.isEmpty) return;
+    final entry = RecentVideoSource(
+      type: source.type,
+      label: source.label,
+      sourceUri: normalizedUri,
+      lastUsedAt: DateTime.now(),
+      attachmentId: source.attachmentId,
+      taskId: source.taskId,
+      fileName: source.fileName,
+    );
+    final existingIndex = recentVideoSources.indexWhere(
+      (item) =>
+          item.type == source.type &&
+          item.attachmentId == source.attachmentId &&
+          item.taskId == source.taskId &&
+          item.sourceUri == normalizedUri,
+    );
+    if (existingIndex >= 0) {
+      recentVideoSources[existingIndex] = entry;
+    } else {
+      recentVideoSources.insert(0, entry);
+    }
+    if (recentVideoSources.length > 20) {
+      recentVideoSources.removeRange(20, recentVideoSources.length);
+    }
+    notifyListeners();
+  }
+
+  Future<bool> ensureTaskVideoLocal(String taskId) {
+    return downloadTaskResult(taskId);
+  }
+
+  Future<bool> ensureAttachmentVideoLocal(String attachmentId) async {
+    final index = library.indexWhere((item) => item.id == attachmentId);
+    if (index == -1) return false;
+    final attachment = library[index];
+    if (attachment.kind != AttachmentKind.video) {
+      return false;
+    }
+    if (attachment.localStatus == AttachmentLocalStatus.ready &&
+        (attachment.localResourceUri?.trim().isNotEmpty ?? false)) {
+      return true;
+    }
+
+    final remoteUrl = await resolveAttachmentPreviewUrl(attachment);
+    if (remoteUrl.trim().isEmpty) {
+      library[index] = attachment.copyWith(
+        localStatus: AttachmentLocalStatus.error,
+        localDownloadProgress: 0,
+        localErrorMessage: '当前素材没有可下载的视频地址。',
+        localUpdatedAt: DateTime.now(),
+      );
+      notifyListeners();
+      return false;
+    }
+
+    library[index] = attachment.copyWith(
+      localStatus: AttachmentLocalStatus.downloading,
+      localDownloadProgress: 0,
+      localUpdatedAt: DateTime.now(),
+      clearLocalErrorMessage: true,
+    );
+    notifyListeners();
+
+    try {
+      final fileName = _lastPathSegment(remoteUrl) ?? attachment.fileName;
+      final tempFile = await downloadRemoteVideoToTemp(
+        remoteUrl,
+        fileName,
+        onProgress: (progress) {
+          final latestIndex = library.indexWhere((item) => item.id == attachmentId);
+          if (latestIndex == -1) return;
+          library[latestIndex] = library[latestIndex].copyWith(
+            localStatus: AttachmentLocalStatus.downloading,
+            localDownloadProgress: progress,
+            localUpdatedAt: DateTime.now(),
+          );
+          notifyListeners();
+        },
+      );
+      final saved = await saveVideoToLocalLibrary(tempFile.path, fileName);
+      final latestIndex = library.indexWhere((item) => item.id == attachmentId);
+      if (latestIndex == -1) return false;
+      library[latestIndex] = library[latestIndex].copyWith(
+        localStatus: AttachmentLocalStatus.ready,
+        localDownloadProgress: 100,
+        localFileName: saved?['path'] as String? ?? fileName,
+        localResourceUri: saved?['uri'] as String? ?? tempFile.path,
+        localUpdatedAt: DateTime.now(),
+        clearLocalErrorMessage: true,
+      );
+      notifyListeners();
+      return true;
+    } on Exception catch (error) {
+      final latestIndex = library.indexWhere((item) => item.id == attachmentId);
+      if (latestIndex == -1) return false;
+      library[latestIndex] = library[latestIndex].copyWith(
+        localStatus: AttachmentLocalStatus.error,
+        localDownloadProgress: 0,
+        localErrorMessage: _cleanError(error),
+        localUpdatedAt: DateTime.now(),
+      );
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<File> downloadRemoteVideoToTemp(
+    String url,
+    String fileName, {
+    void Function(int progress)? onProgress,
+  }) async {
+    final uri = Uri.parse(url);
+    final request = await HttpClient().getUrl(uri);
+    final response = await request.close();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw HttpException('下载失败（HTTP ${response.statusCode}）', uri: uri);
+    }
+    final tempFile = File('${Directory.systemTemp.path}/$fileName');
+    final sink = tempFile.openWrite();
+    final total = response.contentLength;
+    var downloaded = 0;
+    await for (final chunk in response) {
+      sink.add(chunk);
+      downloaded += chunk.length;
+      if (total > 0 && onProgress != null) {
+        onProgress(((downloaded / total) * 100).round().clamp(0, 100));
+      }
+    }
+    await sink.close();
+    return tempFile;
+  }
+
+  Future<Map<String, Object?>?> saveVideoToLocalLibrary(
+    String sourcePath,
+    String fileName,
+  ) {
+    return _mediaChannel.invokeMapMethod<String, Object?>('saveVideoToGallery', {
+      'sourcePath': sourcePath,
+      'fileName': fileName,
+    });
+  }
+
+  Future<String?> saveCapturedFrameToGallery(CapturedFrameResult frame) async {
+    final fileName = frame.path.split('/').last;
+    final saved = await _mediaChannel
+        .invokeMapMethod<String, Object?>('saveImageToGallery', {
+          'sourcePath': frame.path,
+          'fileName': fileName,
+          'mimeType': _mimeTypeForImageFileName(fileName),
+        });
+    return saved?['uri'] as String? ?? saved?['path'] as String?;
+  }
+
+  Future<CapturedFrameResult> captureVideoFrame({
+    required String sourceUri,
+    required int positionMs,
+    String? suggestedFileName,
+  }) {
+    return _videoFrameService.captureFrame(
+      source: sourceUri,
+      positionMs: positionMs,
+      suggestedFileName: suggestedFileName,
+    );
+  }
+
+  Future<String> importCapturedFrameToLibrary(
+    CapturedFrameResult frame, {
+    required String label,
+    required String category,
+    AttachmentRole role = AttachmentRole.referenceImage,
+  }) async {
+    if (!isCurrentStorageConfigured) {
+      throw StateError('请先在设置里填写完整的$currentStorageProviderLabel配置。');
+    }
+    final file = File(frame.path);
+    final bytes = await file.readAsBytes();
+    final fileName = frame.path.split('/').last;
+    final pickedFile = PickedNativeFile.fromBytes(
+      name: fileName,
+      mimeType: _mimeTypeForImageFileName(fileName),
+      bytes: bytes,
+    );
+
+    final result = await switch (settings.storageProvider) {
+      StorageProvider.qiniu => _qiniuUploadService.upload(
+        settings: settings,
+        file: pickedFile,
+      ),
+      StorageProvider.bitifulS4 => _bitifulUploadService.upload(
+        settings: settings,
+        file: pickedFile,
+      ),
+    };
+
+    return insertUploadedAttachment(
+      result,
+      labelOverride: label,
+      roleOverride: role,
+      categoryOverride: category,
+    );
+  }
+
   Future<String> insertUploadedAttachment(
     StorageUploadResult result, {
     String? labelOverride,
@@ -2682,10 +2908,23 @@ class AppState extends ChangeNotifier {
   }
 
   String _cleanError(Object error) {
-    return error
+    final message = error
         .toString()
         .replaceFirst('Exception: ', '')
         .replaceFirst('ApiClientException: ', '');
+    if (message.contains('InvalidAccessKeyId')) {
+      return '存储配置无效：Access Key 不存在或填写错误，请到设置页检查当前存储配置。';
+    }
+    if (message.contains('SignatureDoesNotMatch')) {
+      return '存储配置无效：签名校验失败，请检查 Access Key、Secret Key 和区域配置。';
+    }
+    if (message.contains('AccessDenied')) {
+      return '存储访问被拒绝，请检查当前存储账号权限和 Bucket 配置。';
+    }
+    if (message.contains('<Error>') && message.contains('<Code>')) {
+      return '上传失败：当前存储配置不可用，请到设置页检查 Access Key、Secret Key、Bucket 和区域。';
+    }
+    return message;
   }
 
   String cleanErrorForDisplay(Object error) => _cleanError(error);
@@ -2741,6 +2980,7 @@ class AppState extends ChangeNotifier {
       'settings': _settingsToJson(settings),
       'categories': categories,
       'library': library.map(_attachmentToJson).toList(),
+      'recentVideoSources': recentVideoSources.map(_recentVideoSourceToJson).toList(),
       'libraryRecentFirst': libraryRecentFirst,
       'attachmentLastUsedAt': attachmentLastUsedAt,
       'selectedAttachmentIds': selectedAttachmentIds,
@@ -2780,6 +3020,11 @@ class AppState extends ChangeNotifier {
     library
       ..clear()
       ..addAll(_listFromJson(map['library'], _attachmentFromJson));
+    recentVideoSources
+      ..clear()
+      ..addAll(
+        _listFromJson(map['recentVideoSources'], _recentVideoSourceFromJson),
+      );
     for (final attachment in library) {
       final category = attachment.category.trim();
       if (category.isNotEmpty && !categories.contains(category)) {
@@ -3047,11 +3292,27 @@ class AppState extends ChangeNotifier {
     'createdAt': value.createdAt.toIso8601String(),
     'status': value.status.name,
     'url': value.url,
+    'localStatus': value.localStatus.name,
+    'localDownloadProgress': value.localDownloadProgress,
+    'localResourceUri': value.localResourceUri,
+    'localFileName': value.localFileName,
+    'localUpdatedAt': value.localUpdatedAt?.toIso8601String(),
+    'localErrorMessage': value.localErrorMessage,
     'storageProvider': value.storageProvider.name,
     'objectKey': value.objectKey,
     'storageBucket': value.storageBucket,
     'storageEndpoint': value.storageEndpoint,
     'storageRegion': value.storageRegion,
+  };
+
+  Map<String, Object?> _recentVideoSourceToJson(RecentVideoSource value) => {
+    'type': value.type.name,
+    'label': value.label,
+    'sourceUri': value.sourceUri,
+    'lastUsedAt': value.lastUsedAt.toIso8601String(),
+    'attachmentId': value.attachmentId,
+    'taskId': value.taskId,
+    'fileName': value.fileName,
   };
 
   Attachment _attachmentFromJson(Object? value) {
@@ -3085,6 +3346,20 @@ class AppState extends ChangeNotifier {
         AttachmentStatus.uploaded,
       ),
       url: _stringValue(map['url'], ''),
+      localStatus: _enumValue(
+        AttachmentLocalStatus.values,
+        map['localStatus'],
+        AttachmentLocalStatus.none,
+      ),
+      localDownloadProgress: map['localDownloadProgress'] is num
+          ? (map['localDownloadProgress'] as num).round().clamp(0, 100)
+          : 0,
+      localResourceUri: _nullableStringValue(map['localResourceUri']),
+      localFileName: _nullableStringValue(map['localFileName']),
+      localUpdatedAt: DateTime.tryParse(
+        _stringValue(map['localUpdatedAt'], ''),
+      ),
+      localErrorMessage: _nullableStringValue(map['localErrorMessage']),
       storageProvider: _enumValue(
         StorageProvider.values,
         map['storageProvider'],
@@ -3094,6 +3369,27 @@ class AppState extends ChangeNotifier {
       storageBucket: _nullableStringValue(map['storageBucket']),
       storageEndpoint: _nullableStringValue(map['storageEndpoint']),
       storageRegion: _nullableStringValue(map['storageRegion']),
+    );
+  }
+
+  RecentVideoSource _recentVideoSourceFromJson(Object? value) {
+    final map = value is Map
+        ? Map<String, Object?>.from(value)
+        : <String, Object?>{};
+    return RecentVideoSource(
+      type: _enumValue(
+        VideoFrameSourceType.values,
+        map['type'],
+        VideoFrameSourceType.localFile,
+      ),
+      label: _stringValue(map['label'], '最近使用视频'),
+      sourceUri: _stringValue(map['sourceUri'], ''),
+      lastUsedAt:
+          DateTime.tryParse(_stringValue(map['lastUsedAt'], '')) ??
+          DateTime.now(),
+      attachmentId: _nullableStringValue(map['attachmentId']),
+      taskId: _nullableStringValue(map['taskId']),
+      fileName: _nullableStringValue(map['fileName']),
     );
   }
 

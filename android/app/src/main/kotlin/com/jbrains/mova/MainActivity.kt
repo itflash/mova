@@ -15,6 +15,9 @@ import android.provider.OpenableColumns
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.media.MediaMetadataRetriever
+import android.graphics.Bitmap
+import android.provider.MediaStore.Video.Media
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -32,6 +35,7 @@ class MainActivity : FlutterActivity() {
     private val fileChannelName = "mova/native_files"
     private val storageChannelName = "mova/storage"
     private val mediaChannelName = "mova/media"
+    private val videoFramesChannelName = "mova/video_frames"
     private val preferencesName = "mova_preferences"
     private val appStateKey = "app_state_json"
     private val databaseName = "mova.db"
@@ -45,6 +49,7 @@ class MainActivity : FlutterActivity() {
     private val exportBackupRequestCode = 2049
     private val importBackupRequestCode = 2050
     private val pickPhotoPickerRequestCode = 2051
+    private val pickVideoPickerRequestCode = 2052
 
     private var pendingPickResult: MethodChannel.Result? = null
     private var pendingExportResult: MethodChannel.Result? = null
@@ -59,6 +64,27 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, fileChannelName).setMethodCallHandler { call, result ->
             when (call.method) {
                 "pickMediaFiles" -> pickMediaFiles(result)
+                "pickSingleVideoFile" -> pickSingleVideoFile(result)
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, videoFramesChannelName).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "captureFrame" -> {
+                    val source = call.argument<String>("source")
+                    val positionMs = call.argument<Number>("positionMs")?.toLong() ?: 0L
+                    val suggestedFileName = call.argument<String>("suggestedFileName")
+                    if (source.isNullOrBlank()) {
+                        result.error("capture_failed", "缺少视频来源。", null)
+                    } else {
+                        try {
+                            result.success(captureVideoFrame(source, positionMs, suggestedFileName))
+                        } catch (error: Exception) {
+                            result.error("capture_failed", error.message ?: "截帧失败。", null)
+                        }
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -209,14 +235,67 @@ class MainActivity : FlutterActivity() {
         startActivityForResult(Intent.createChooser(intent, "选择素材"), pickMediaRequestCode)
     }
 
+    private fun pickSingleVideoFile(result: MethodChannel.Result) {
+        if (pendingPickResult != null) {
+            result.error("picker_busy", "文件选择器正在打开。", null)
+            return
+        }
+        pendingPickResult = result
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val intent = Intent(MediaStore.ACTION_PICK_IMAGES).apply {
+                type = "video/*"
+            }
+            startActivityForResult(intent, pickVideoPickerRequestCode)
+            return
+        }
+        val intent = Intent(
+            Intent.ACTION_PICK,
+            Media.EXTERNAL_CONTENT_URI
+        ).apply {
+            type = "video/*"
+        }
+        startActivityForResult(Intent.createChooser(intent, "选择视频"), pickVideoPickerRequestCode)
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         when (requestCode) {
             pickMediaRequestCode -> handlePickMediaResult(resultCode, data)
             pickPhotoPickerRequestCode -> handlePickMediaResult(resultCode, data)
+            pickVideoPickerRequestCode -> handlePickSingleVideoResult(resultCode, data)
             exportBackupRequestCode -> handleExportResult(resultCode, data)
             importBackupRequestCode -> handleImportResult(resultCode, data)
+        }
+    }
+
+    private fun handlePickSingleVideoResult(resultCode: Int, data: Intent?) {
+        val result = pendingPickResult ?: return
+        pendingPickResult = null
+
+        if (resultCode != Activity.RESULT_OK || data?.data == null) {
+            result.success(null)
+            return
+        }
+
+        val uri = data.data ?: run {
+            result.success(null)
+            return
+        }
+
+        try {
+            val mimeType = contentResolver.getType(uri) ?: "video/mp4"
+            val localCopy = copyUriToCache(uri, displayName(uri))
+            result.success(
+                mapOf(
+                    "name" to displayName(uri),
+                    "mimeType" to mimeType,
+                    "uri" to Uri.fromFile(localCopy).toString(),
+                    "path" to localCopy.absolutePath,
+                )
+            )
+        } catch (error: Exception) {
+            result.error("pick_failed", error.message ?: "读取视频失败。", null)
         }
     }
 
@@ -254,6 +333,22 @@ class MainActivity : FlutterActivity() {
             return
         }
         try {
+            if (uris.size == 1) {
+                val uri = uris.first()
+                val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
+                if (mimeType.startsWith("video/")) {
+                    val localCopy = copyUriToCache(uri, displayName(uri))
+                    result.success(
+                        mapOf(
+                            "name" to displayName(uri),
+                            "mimeType" to mimeType,
+                            "uri" to Uri.fromFile(localCopy).toString(),
+                            "path" to localCopy.absolutePath,
+                        )
+                    )
+                    return
+                }
+            }
             val files = uris.map { uri ->
                 mapOf(
                     "name" to displayName(uri),
@@ -264,6 +359,53 @@ class MainActivity : FlutterActivity() {
             result.success(files)
         } catch (error: Exception) {
             result.error("pick_failed", error.message ?: "读取文件失败。", null)
+        }
+    }
+
+    private fun copyUriToCache(uri: Uri, fileName: String): File {
+        val safeName = fileName.ifBlank { "video-${System.currentTimeMillis()}.mp4" }
+        val target = File(cacheDir, safeName)
+        contentResolver.openInputStream(uri)?.use { input ->
+            FileOutputStream(target).use { output -> input.copyTo(output) }
+        } ?: throw IllegalStateException("无法读取视频文件。")
+        return target
+    }
+
+    private fun captureVideoFrame(source: String, positionMs: Long, suggestedFileName: String?): Map<String, Any> {
+        val retriever = MediaMetadataRetriever()
+        try {
+            when {
+                source.startsWith("content://") -> retriever.setDataSource(this, Uri.parse(source))
+                source.startsWith("file://") -> retriever.setDataSource(Uri.parse(source).path)
+                source.startsWith("/") -> retriever.setDataSource(source)
+                else -> retriever.setDataSource(source, HashMap())
+            }
+            val targetTimeUs = positionMs * 1000L
+            val bitmap =
+                retriever.getFrameAtTime(
+                    targetTimeUs,
+                    MediaMetadataRetriever.OPTION_CLOSEST
+                )
+                    ?: retriever.getFrameAtTime(
+                        targetTimeUs,
+                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+                    )
+                    ?: throw IllegalStateException("无法获取对应时间点的画面。")
+            val fileName = (suggestedFileName ?: "frame-${System.currentTimeMillis()}.jpg")
+                .replace(Regex("[^A-Za-z0-9._-]"), "_")
+            val output = File(cacheDir, fileName)
+            FileOutputStream(output).use { stream ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 92, stream)
+            }
+            return mapOf(
+                "path" to output.absolutePath,
+                "uri" to Uri.fromFile(output).toString(),
+                "width" to bitmap.width,
+                "height" to bitmap.height,
+                "positionMs" to positionMs,
+            )
+        } finally {
+            retriever.release()
         }
     }
 
