@@ -1,0 +1,228 @@
+name: Release Mobile Builds
+
+# Required iOS secrets for a signed IPA:
+# - APPLE_CERTIFICATE_BASE64: base64-encoded .p12 signing certificate
+# - APPLE_CERTIFICATE_PASSWORD: password for the .p12 file
+# - APPLE_PROVISIONING_PROFILE_BASE64: base64-encoded .mobileprovision profile
+# - KEYCHAIN_PASSWORD: temporary keychain password used on the macOS runner
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag to create or update, for example v1.0.5"
+        required: true
+        type: string
+      publish_ios:
+        description: "Build a signed iOS IPA when Apple signing secrets are configured"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: "3.44.1"
+  JAVA_VERSION: "17"
+
+jobs:
+  meta:
+    name: Resolve Release Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+      publish_ios: ${{ steps.meta.outputs.publish_ios }}
+    steps:
+      - name: Resolve tag and iOS toggle
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "release_tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "publish_ios=true" >> "$GITHUB_OUTPUT"
+          else
+            release_tag="$(printf '%s' '${{ inputs.release_tag }}' | tr -d '\r' | xargs)"
+            if [[ "$release_tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              release_tag="v$release_tag"
+            fi
+            if [[ ! "$release_tag" =~ ^v[0-9]+(\.[0-9]+){2}([.-][0-9A-Za-z.-]+)?$ ]]; then
+              echo "Invalid release_tag: '$release_tag'. Use a tag like v1.0.5." >&2
+              exit 1
+            fi
+            echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+            echo "publish_ios=${{ inputs.publish_ios }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  android:
+    name: Build Android Split APKs
+    runs-on: ubuntu-latest
+    needs: meta
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build release split APKs
+        run: flutter build apk --release --split-per-abi
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-android-apks
+          path: build/app/outputs/flutter-apk/app-*-release.apk
+          if-no-files-found: error
+
+  ios:
+    name: Build iOS IPA
+    runs-on: macos-latest
+    needs: meta
+    if: needs.meta.outputs.publish_ios == 'true'
+    env:
+      APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Decide whether iOS signing is configured
+        id: signing
+        shell: bash
+        run: |
+          missing=0
+          for name in \
+            APPLE_CERTIFICATE_BASE64 \
+            APPLE_CERTIFICATE_PASSWORD \
+            APPLE_PROVISIONING_PROFILE_BASE64 \
+            KEYCHAIN_PASSWORD
+          do
+            if [[ -z "${!name}" ]]; then
+              echo "::notice title=iOS build skipped::Missing secret ${name}"
+              missing=1
+            fi
+          done
+
+          if [[ "$missing" -eq 0 ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: steps.signing.outputs.enabled == 'true'
+        run: flutter pub get
+
+      - name: Install certificate and provisioning profile
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          CERT_PATH="$RUNNER_TEMP/dist_cert.p12"
+          PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          export CERT_PATH PROFILE_PATH
+
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          Path(os.environ["CERT_PATH"]).write_bytes(
+              base64.b64decode(os.environ["APPLE_CERTIFICATE_BASE64"])
+          )
+          Path(os.environ["PROFILE_PATH"]).write_bytes(
+              base64.b64decode(os.environ["APPLE_PROVISIONING_PROFILE_BASE64"])
+          )
+          PY
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/"
+
+      - name: Build signed IPA
+        if: steps.signing.outputs.enabled == 'true'
+        run: flutter build ipa --release --export-method ad-hoc
+
+      - name: Upload iOS artifact
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-ios-ipa
+          path: build/ios/ipa/*.ipa
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - meta
+      - android
+      - ios
+    if: always() && needs.android.result == 'success' && (needs.ios.result == 'success' || needs.ios.result == 'skipped')
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: List release files
+        run: find dist -maxdepth 2 -type f | sort
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.meta.outputs.release_tag }}
+          TARGET_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          mapfile -t files < <(find dist -maxdepth 2 -type f | sort)
+          if [[ "${#files[@]}" -eq 0 ]]; then
+            echo "No release files were produced."
+            exit 1
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
+          else
+            gh release create "$RELEASE_TAG" "${files[@]}" \
+              --target "$TARGET_SHA" \
+              --title "$RELEASE_TAG" \
+              --generate-notes
+          fi
