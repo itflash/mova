@@ -214,6 +214,67 @@ iOS 无签名构建：
 flutter build ios --no-codesign
 ```
 
+## Android 签名说明
+
+当前项目支持两种 Android release 构建方式：
+
+- 未配置正式签名时：
+  会回退为 debug 签名，适合本地临时打包测试
+
+- 配置正式签名后：
+  本地构建和 GitHub Actions 都可以使用同一份 release keystore，保证安装包签名一致
+
+### 本地配置正式签名
+
+1. 把你的 keystore 文件放到 `android/` 目录，例如：
+
+```bash
+android/release.keystore
+```
+
+2. 复制示例文件：
+
+```bash
+cp android/key.properties.example android/key.properties
+```
+
+3. 按实际内容修改 `android/key.properties`：
+
+```properties
+storePassword=你的 keystore 密码
+keyPassword=你的 key 密码
+keyAlias=你的 alias
+storeFile=release.keystore
+```
+
+说明：
+
+- `android/key.properties`
+- `android/*.jks`
+- `android/*.keystore`
+
+这些文件默认已加入 `.gitignore`，不要提交到仓库。
+
+### GitHub Actions 配置正式签名
+
+如果希望 GitHub 构建出的 Android 包和本地签名一致，请在 GitHub Secrets 中配置同一份 keystore：
+
+- `ANDROID_KEYSTORE_BASE64`
+  你的 `.jks` 或 `.keystore` 文件做 base64 后的内容
+
+- `ANDROID_KEYSTORE_PASSWORD`
+  keystore 密码
+
+- `ANDROID_KEY_ALIAS`
+  key alias
+
+- `ANDROID_KEY_PASSWORD`
+  key 密码
+
+这样 GitHub Actions 会在构建时自动生成 `android/key.properties` 和 `android/release.keystore`，并使用 release 签名。
+
+如果没有配置这些 Secrets，GitHub 仍然可以构建，但会回退到 debug 签名，因此和你本地正式签名包不会一致。
+
 ## 免责声明
 
 本项目 README 中提到的 AgentEarth.ai、Seedance2、七牛云、缤纷云（Bitiful S4）仅用于说明“当前项目已接入的服务”与“当前验证过可工作的组合”。

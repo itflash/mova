@@ -5,6 +5,12 @@ name: Release Mobile Builds
 # - APPLE_CERTIFICATE_PASSWORD: password for the .p12 file
 # - APPLE_PROVISIONING_PROFILE_BASE64: base64-encoded .mobileprovision profile
 # - KEYCHAIN_PASSWORD: temporary keychain password used on the macOS runner
+#
+# Optional Android release signing secrets for a stable production signature:
+# - ANDROID_KEYSTORE_BASE64: base64-encoded .jks or .keystore file
+# - ANDROID_KEYSTORE_PASSWORD: keystore password
+# - ANDROID_KEY_ALIAS: key alias
+# - ANDROID_KEY_PASSWORD: key password
 
 on:
   push:
@@ -61,6 +67,11 @@ jobs:
     name: Build Android Split APKs
     runs-on: ubuntu-latest
     needs: meta
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -80,6 +91,18 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Configure Android signing
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        shell: bash
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/release.keystore
+          cat > android/key.properties <<EOF
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyPassword=$ANDROID_KEY_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          storeFile=release.keystore
+          EOF
 
       - name: Build release split APKs
         run: flutter build apk --release --split-per-abi
