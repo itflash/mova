@@ -451,7 +451,7 @@ Future<void> _openCategoryManagement(BuildContext context) async {
   );
 }
 
-enum _AttachmentMenuAction { saveToGallery, copyUrl, delete }
+enum _AttachmentMenuAction { saveToGallery, copyUrl }
 
 class _AttachmentCard extends StatefulWidget {
   const _AttachmentCard({
@@ -862,6 +862,13 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                         )
                       : null,
                 ),
+              _AttachmentActionButton(
+                icon: Icons.delete_outline_rounded,
+                label: '删除',
+                onPressed: canAccess
+                    ? () => _deleteAttachment(context, state, attachment)
+                    : null,
+              ),
               _AttachmentOverflowButton(
                 enabled: canAccess,
                 itemBuilder: (context) => [
@@ -880,15 +887,6 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                       label: '复制链接',
                     ),
                   ),
-                  const PopupMenuDivider(),
-                  PopupMenuItem<_AttachmentMenuAction>(
-                    value: _AttachmentMenuAction.delete,
-                    child: _AttachmentMenuRow(
-                      icon: Icons.delete_outline_rounded,
-                      label: '删除素材',
-                      destructive: true,
-                    ),
-                  ),
                 ],
                 onSelected: (action) {
                   switch (action) {
@@ -896,8 +894,6 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                       _saveAttachmentToGallery(context, state, attachment);
                     case _AttachmentMenuAction.copyUrl:
                       _copyAttachmentUrl(context, state, attachment);
-                    case _AttachmentMenuAction.delete:
-                      _deleteAttachment(context, state, attachment);
                   }
                 },
               ),
@@ -1263,18 +1259,14 @@ class _AttachmentMenuRow extends StatelessWidget {
   const _AttachmentMenuRow({
     required this.icon,
     required this.label,
-    this.destructive = false,
   });
 
   final IconData icon;
   final String label;
-  final bool destructive;
 
   @override
   Widget build(BuildContext context) {
-    final color = destructive
-        ? Theme.of(context).colorScheme.error
-        : Theme.of(context).colorScheme.onSurface;
+    final color = Theme.of(context).colorScheme.onSurface;
     return Row(
       children: [
         Icon(icon, size: 18, color: color),
