@@ -281,15 +281,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
                 const PanelDivider(),
-                UtilityTile(
-                  title: '存储说明',
-                  subtitle: '本地状态已迁移到 SQLite；敏感配置会在 Android 端加密后再落库。',
-                  trailing: Icon(
-                    Icons.lock_outline_rounded,
-                    size: 18,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
+                UtilityTile(title: '存储说明', subtitle: '敏感配置会在 Android 端加密后再落库。'),
               ],
             ),
           ),

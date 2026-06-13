@@ -42,7 +42,7 @@ const modeCredits = {
 
 const metadataDefaults = MetadataState(
   model: 'doubao-seedance-2-0-260128',
-  duration: '5',
+  duration: '15',
   frames: '',
   resolution: '720p',
   ratio: '16:9',
