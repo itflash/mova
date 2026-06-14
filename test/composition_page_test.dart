@@ -87,12 +87,12 @@ void main() {
     await tester.tap(find.text('剪辑'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('裁剪'),
+      find.byTooltip('裁剪'),
       120,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('裁剪'));
+    await tester.tap(find.byTooltip('裁剪'));
     await tester.pumpAndSettle();
 
     expect(find.text('裁剪片段'), findsOneWidget);

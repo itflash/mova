@@ -333,43 +333,112 @@ class _CompositionClipCard extends StatelessWidget {
               },
             ),
             const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.tonalIcon(
-                  onPressed: () => _openTrimSheet(context, state, clip),
-                  icon: const Icon(Icons.cut_rounded),
-                  label: const Text('裁剪'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: () =>
-                      state.pickAndReplaceCompositionVideo(clip.id),
-                  icon: const Icon(Icons.swap_horiz_rounded),
-                  label: const Text('更换'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: () => state.moveCompositionClip(clip.id, -1),
-                  icon: const Icon(Icons.arrow_upward_rounded),
-                  label: const Text('上移'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: () => state.moveCompositionClip(clip.id, 1),
-                  icon: const Icon(Icons.arrow_downward_rounded),
-                  label: const Text('下移'),
-                ),
-                FilledButton.tonalIcon(
-                  style: FilledButton.styleFrom(
-                    foregroundColor: theme.colorScheme.error,
-                  ),
-                  onPressed: () => state.removeCompositionClip(clip.id),
-                  icon: const Icon(Icons.delete_outline_rounded),
-                  label: const Text('删除'),
-                ),
-              ],
+            _ClipActionBar(
+              onTrim: () => _openTrimSheet(context, state, clip),
+              onReplace: () => state.pickAndReplaceCompositionVideo(clip.id),
+              onMoveUp: () => state.moveCompositionClip(clip.id, -1),
+              onMoveDown: () => state.moveCompositionClip(clip.id, 1),
+              onDelete: () => state.removeCompositionClip(clip.id),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ClipActionBar extends StatelessWidget {
+  const _ClipActionBar({
+    required this.onTrim,
+    required this.onReplace,
+    required this.onMoveUp,
+    required this.onMoveDown,
+    required this.onDelete,
+  });
+
+  final VoidCallback onTrim;
+  final VoidCallback onReplace;
+  final VoidCallback onMoveUp;
+  final VoidCallback onMoveDown;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _ClipActionChip(
+          label: '裁剪',
+          icon: Icons.cut_rounded,
+          onPressed: onTrim,
+        ),
+        _ClipActionChip(
+          label: '更换',
+          icon: Icons.swap_horiz_rounded,
+          onPressed: onReplace,
+        ),
+        _ClipActionChip(
+          label: '上移',
+          icon: Icons.arrow_upward_rounded,
+          onPressed: onMoveUp,
+        ),
+        _ClipActionChip(
+          label: '下移',
+          icon: Icons.arrow_downward_rounded,
+          onPressed: onMoveDown,
+        ),
+        _ClipActionChip(
+          label: '删除',
+          icon: Icons.delete_outline_rounded,
+          onPressed: onDelete,
+          foregroundColor: theme.colorScheme.error,
+          borderColor: theme.colorScheme.error.withValues(alpha: 0.45),
+        ),
+      ],
+    );
+  }
+}
+
+class _ClipActionChip extends StatelessWidget {
+  const _ClipActionChip({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.foregroundColor,
+    this.borderColor,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+  final Color? foregroundColor;
+  final Color? borderColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = foregroundColor ?? theme.colorScheme.onSurfaceVariant;
+    return Tooltip(
+      message: label,
+      child: ActionChip(
+        avatar: Icon(icon, size: 18, color: color),
+        label: Text(label),
+        labelStyle: theme.textTheme.labelLarge?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
+        side: BorderSide(
+          color:
+              borderColor ??
+              theme.colorScheme.outlineVariant.withValues(alpha: 0.7),
+        ),
+        backgroundColor: theme.colorScheme.surface,
+        pressElevation: 0,
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.padded,
+        onPressed: onPressed,
       ),
     );
   }
