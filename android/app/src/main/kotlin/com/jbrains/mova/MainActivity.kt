@@ -360,12 +360,14 @@ class MainActivity : FlutterActivity() {
         try {
             val mimeType = contentResolver.getType(uri) ?: "video/mp4"
             val localCopy = copyUriToCache(uri, displayName(uri))
+            val durationMs = videoDurationMs(localCopy.absolutePath)
             result.success(
                 mapOf(
                     "name" to displayName(uri),
                     "mimeType" to mimeType,
                     "uri" to Uri.fromFile(localCopy).toString(),
                     "path" to localCopy.absolutePath,
+                    "durationMs" to durationMs,
                 )
             )
         } catch (error: Exception) {
@@ -442,12 +444,14 @@ class MainActivity : FlutterActivity() {
                 val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
                 if (mimeType.startsWith("video/")) {
                     val localCopy = copyUriToCache(uri, displayName(uri))
+                    val durationMs = videoDurationMs(localCopy.absolutePath)
                     result.success(
                         mapOf(
                             "name" to displayName(uri),
                             "mimeType" to mimeType,
                             "uri" to Uri.fromFile(localCopy).toString(),
                             "path" to localCopy.absolutePath,
+                            "durationMs" to durationMs,
                         )
                     )
                     return
@@ -463,6 +467,16 @@ class MainActivity : FlutterActivity() {
             result.success(files)
         } catch (error: Exception) {
             result.error("pick_failed", error.message ?: "读取文件失败。", null)
+        }
+    }
+
+    private fun videoDurationMs(path: String): Long {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(path)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 15000L
+        } finally {
+            retriever.release()
         }
     }
 

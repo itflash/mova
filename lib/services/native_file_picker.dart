@@ -63,12 +63,14 @@ class PickedLocalMediaFile {
     required this.mimeType,
     required this.uri,
     this.path,
+    this.durationMs,
   });
 
   final String name;
   final String mimeType;
   final String uri;
   final String? path;
+  final int? durationMs;
 
   factory PickedLocalMediaFile.fromPlatformMap(Map<Object?, Object?> value) {
     return PickedLocalMediaFile(
@@ -76,6 +78,7 @@ class PickedLocalMediaFile {
       mimeType: value['mimeType'] as String? ?? 'application/octet-stream',
       uri: value['uri'] as String? ?? '',
       path: value['path'] as String?,
+      durationMs: (value['durationMs'] as num?)?.round(),
     );
   }
 }

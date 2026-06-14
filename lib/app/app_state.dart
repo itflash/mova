@@ -704,7 +704,7 @@ class AppState extends ChangeNotifier {
         localUri: uri,
         fileName: picked.name,
         startMs: 0,
-        endMs: 15000,
+        endMs: picked.durationMs ?? 15000,
       ),
     );
     currentTab = AppTab.composition;
@@ -724,7 +724,7 @@ class AppState extends ChangeNotifier {
         sourceUri: uri,
         fileName: picked.name,
         startMs: 0,
-        endMs: 15000,
+        endMs: picked.durationMs ?? 15000,
         clearSourceId: true,
       ),
     );
