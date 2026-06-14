@@ -403,7 +403,6 @@ class FloatingSubmitBar extends StatelessWidget {
         color: colorScheme.surface,
         elevation: 2,
         shadowColor: Colors.black.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(14),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(

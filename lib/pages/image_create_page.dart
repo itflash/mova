@@ -260,6 +260,14 @@ class _ImageCreatePageState extends State<ImageCreatePage> {
   }
 
   Future<void> _submitImageTask(BuildContext context, AppState state) async {
+    final confirmed = await confirmAction(
+      context,
+      title: '提交图片任务？',
+      message: '确认后会按当前参考图、提示词和参数创建图片生成任务，并可能消耗所选工具积分。',
+      confirmLabel: '确认提交',
+    );
+    if (!confirmed || !context.mounted) return;
+
     final submitted = await state.submitImageTask();
     if (!context.mounted) return;
 
@@ -378,91 +386,100 @@ class _ImageReferenceSection extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final attachments = state.selectedImageAttachments;
     final hasPrompt = state.imagePrompt.trim().isNotEmpty;
+    final hasReference = attachments.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: attachments.isEmpty
-                  ? colorScheme.outlineVariant.withValues(alpha: 0.6)
-                  : colorScheme.primary.withValues(alpha: 0.18),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: hasReference
+                    ? colorScheme.primary.withValues(alpha: 0.10)
+                    : colorScheme.surfaceContainerHighest,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                hasReference
+                    ? Icons.check_rounded
+                    : Icons.add_photo_alternate_outlined,
+                size: 18,
+                color: hasReference
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
+              ),
             ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                attachments.isEmpty ? '先放一张输入图' : '参考图已就绪',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                attachments.isEmpty
-                    ? '先选至少 1 张图，后面再描述你想怎么改。'
-                    : '已选 ${attachments.length} 张图，提交时会按当前顺序作为编辑输入。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: onAdd,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(50),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hasReference ? '参考图已就绪' : '先放一张输入图',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  icon: Icon(
-                    attachments.isEmpty
-                        ? Icons.add_photo_alternate_outlined
-                        : Icons.collections_outlined,
-                    size: 18,
+                  const SizedBox(height: 4),
+                  Text(
+                    hasReference
+                        ? '已选 ${attachments.length} 张，提交时按当前顺序作为编辑输入。'
+                        : '选择参考图后，再用提示词描述你希望怎么改。',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                      height: 1.35,
+                    ),
                   ),
-                  label: Text(attachments.isEmpty ? '选择参考图' : '继续添加参考图'),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            OutlinedButton.icon(
+              onPressed: onAdd,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(0, 38),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                side: BorderSide(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.8),
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              const SizedBox(height: 12),
+              icon: Icon(
+                hasReference ? Icons.add_rounded : Icons.image_outlined,
+                size: 17,
+              ),
+              label: Text(hasReference ? '添加' : '选择'),
+            ),
+          ],
+        ),
+        if (attachments.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '已选素材',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
               _ReferenceFlowHint(
-                hasReference: attachments.isNotEmpty,
+                hasReference: hasReference,
                 hasPrompt: hasPrompt,
               ),
             ],
           ),
-        ),
-        if (attachments.isEmpty) ...[
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: const [
-              _ReferenceUseCaseChip(label: '换背景'),
-              _ReferenceUseCaseChip(label: '改服装'),
-              _ReferenceUseCaseChip(label: '统一风格'),
-              _ReferenceUseCaseChip(label: '补细节'),
-            ],
-          ),
-        ],
-        if (attachments.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(child: Text('已选素材', style: theme.textTheme.labelMedium)),
-              Text('${attachments.length} 张', style: theme.textTheme.bodySmall),
-            ],
-          ),
           const SizedBox(height: 10),
           SizedBox(
-            height: 104,
+            height: 96,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: attachments.length,
@@ -499,7 +516,7 @@ class _ImageReferenceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return SizedBox(
-      width: 120,
+      width: 112,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -507,25 +524,23 @@ class _ImageReferenceCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.78,
-                  ),
-                  borderRadius: BorderRadius.circular(22),
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.72),
                   ),
                 ),
                 child: AttachmentThumb(
                   attachment: attachment,
-                  width: 108,
-                  height: 76,
-                  radius: 16,
+                  width: 104,
+                  height: 70,
+                  radius: 12,
                   overlayLabel: attachment.label,
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 5),
               Text(
                 '图 ${index + 1}',
                 style: Theme.of(
@@ -535,17 +550,18 @@ class _ImageReferenceCard extends StatelessWidget {
             ],
           ),
           Positioned(
-            right: -6,
-            top: -6,
+            right: -5,
+            top: -5,
             child: Material(
               color: colorScheme.surface,
+              elevation: 1,
               shape: const CircleBorder(),
               child: InkWell(
                 customBorder: const CircleBorder(),
                 onTap: onRemove,
                 child: const Padding(
-                  padding: EdgeInsets.all(6),
-                  child: Icon(Icons.close_rounded, size: 16),
+                  padding: EdgeInsets.all(5),
+                  child: Icon(Icons.close_rounded, size: 15),
                 ),
               ),
             ),
@@ -567,22 +583,12 @@ class _ReferenceFlowHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Wrap(
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 8,
-      runSpacing: 6,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          '参考流程',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
         _ReferenceFlowStep(index: 1, label: '选图', active: hasReference),
         _FlowSeparator(active: hasReference),
-        _ReferenceFlowStep(index: 2, label: '写提示词', active: hasPrompt),
+        _ReferenceFlowStep(index: 2, label: '提示词', active: hasPrompt),
         _FlowSeparator(active: hasReference && hasPrompt),
         _ReferenceFlowStep(
           index: 3,
@@ -613,13 +619,13 @@ class _ReferenceFlowStep extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 18,
-          height: 18,
+          width: 16,
+          height: 16,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: active
-                ? colorScheme.primary.withValues(alpha: 0.12)
-                : colorScheme.surfaceContainerHighest,
+                ? colorScheme.primary.withValues(alpha: 0.10)
+                : colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
             shape: BoxShape.circle,
           ),
           child: Text(
@@ -631,12 +637,12 @@ class _ReferenceFlowStep extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(width: 4),
+        const SizedBox(width: 3),
         Text(
           label,
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
             color: color,
-            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+            fontWeight: active ? FontWeight.w700 : FontWeight.w400,
           ),
         ),
       ],
@@ -654,37 +660,10 @@ class _FlowSeparator extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return Icon(
       Icons.chevron_right_rounded,
-      size: 15,
+      size: 14,
       color: active
-          ? colorScheme.primary.withValues(alpha: 0.72)
-          : colorScheme.onSurfaceVariant.withValues(alpha: 0.48),
-    );
-  }
-}
-
-class _ReferenceUseCaseChip extends StatelessWidget {
-  const _ReferenceUseCaseChip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(
-          context,
-        ).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
-      ),
+          ? colorScheme.primary.withValues(alpha: 0.62)
+          : colorScheme.onSurfaceVariant.withValues(alpha: 0.34),
     );
   }
 }

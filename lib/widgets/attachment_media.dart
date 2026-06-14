@@ -706,17 +706,14 @@ class _MovaVideoControlsState extends State<MovaVideoControls> {
                       ),
                     ),
                     const Spacer(),
-                    IconButton(
+                    _VideoRoundButton(
                       tooltip: chewieController.isFullScreen ? '退出全屏' : '全屏',
                       onPressed: chewieController.toggleFullScreen,
-                      visualDensity: VisualDensity.compact,
-                      color: Colors.white,
-                      icon: Icon(
-                        chewieController.isFullScreen
-                            ? Icons.fullscreen_exit_rounded
-                            : Icons.fullscreen_rounded,
-                        size: 22,
-                      ),
+                      icon: chewieController.isFullScreen
+                          ? Icons.fullscreen_exit_rounded
+                          : Icons.fullscreen_rounded,
+                      size: 40,
+                      iconSize: 22,
                     ),
                   ],
                 ),

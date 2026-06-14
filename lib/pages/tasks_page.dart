@@ -1012,6 +1012,8 @@ class _TaskActionBar extends StatelessWidget {
           _PrimaryTaskButton(task: task),
           const SizedBox(width: 8),
         ],
+        _TaskLogButton(task: task),
+        const SizedBox(width: 8),
         Material(
           color: Colors.transparent,
           borderRadius: BorderRadius.circular(8),
@@ -1131,6 +1133,24 @@ class _PrimaryTaskButton extends StatelessWidget {
   }
 }
 
+class _TaskLogButton extends StatelessWidget {
+  const _TaskLogButton({required this.task});
+
+  final TaskRecord task;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final expanded = state.expandedPollLogTaskIds.contains(task.id);
+    return ToolIconButton(
+      tooltip: expanded ? '收起轮询日志' : '查看轮询日志',
+      icon: expanded ? Icons.receipt_long_rounded : Icons.receipt_long_outlined,
+      emphasized: expanded,
+      onPressed: () => state.toggleTaskPollLogs(task.id),
+    );
+  }
+}
+
 class _VideoTaskCard extends StatelessWidget {
   const _VideoTaskCard({required this.task});
 
@@ -1138,8 +1158,10 @@ class _VideoTaskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final state = AppScope.of(context);
     final tone = TasksPage()._toneForTask(context, task.status);
     final active = TasksPage()._isActive(task);
+    final showLogs = state.expandedPollLogTaskIds.contains(task.id);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1210,6 +1232,11 @@ class _VideoTaskCard extends StatelessWidget {
                   _TaskActionBar(task: task),
                 ],
               ),
+              if (showLogs) ...[
+                const PanelDivider(),
+                const SizedBox(height: 12),
+                _PollLogPanel(logs: task.pollLogs),
+              ],
               if (task.downloadStatus == DownloadStatus.downloading) ...[
                 const PanelDivider(),
                 Padding(
@@ -1276,6 +1303,7 @@ class _ImageTaskCard extends StatelessWidget {
     final state = AppScope.of(context);
     final tone = TasksPage()._toneForTask(context, task.status);
     final active = TasksPage()._isActive(task);
+    final showLogs = state.expandedPollLogTaskIds.contains(task.id);
     final previewItems = task.imageResults
         .map((item) => _TaskImagePreviewData.fromResult(state, item))
         .whereType<_TaskImagePreviewData>()
@@ -1370,6 +1398,11 @@ class _ImageTaskCard extends StatelessWidget {
                   _ImageTaskActionBar(task: task),
                 ],
               ),
+              if (showLogs) ...[
+                const PanelDivider(),
+                const SizedBox(height: 12),
+                _PollLogPanel(logs: task.pollLogs),
+              ],
               if (task.imageResults.isNotEmpty) ...[
                 const PanelDivider(),
                 const SizedBox(height: 12),
@@ -2013,6 +2046,8 @@ class _ImageTaskActionBar extends StatelessWidget {
           _PrimaryTaskButton(task: task),
           const SizedBox(width: 8),
         ],
+        _TaskLogButton(task: task),
+        const SizedBox(width: 8),
         Material(
           color: Colors.transparent,
           borderRadius: BorderRadius.circular(8),

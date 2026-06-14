@@ -374,6 +374,14 @@ class _CreatePageState extends State<CreatePage> {
   }
 
   Future<void> _submitTask(BuildContext context, AppState state) async {
+    final confirmed = await confirmAction(
+      context,
+      title: '提交生成任务？',
+      message: '确认后会按当前参数创建视频生成任务，并可能消耗所选工具积分。提交后可在任务页查看进度。',
+      confirmLabel: '确认提交',
+    );
+    if (!confirmed || !context.mounted) return;
+
     final submitted = await state.submitTask();
     if (submitted) {
       if (!context.mounted) return;

@@ -1215,28 +1215,67 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (_isEditingLabel)
-                      TextField(
-                        controller: _labelController,
-                        focusNode: _labelFocusNode,
-                        decoration: const InputDecoration(
-                          labelText: '素材名',
-                          isDense: true,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _isEditingLabel
+                              ? TextField(
+                                  controller: _labelController,
+                                  focusNode: _labelFocusNode,
+                                  decoration: const InputDecoration(
+                                    labelText: '素材名',
+                                    isDense: true,
+                                  ),
+                                  textInputAction: TextInputAction.done,
+                                  onSubmitted: (_) {
+                                    _saveLabel();
+                                    setState(() {
+                                      _isEditingLabel = false;
+                                    });
+                                  },
+                                  onTapOutside: (_) => _saveLabel(),
+                                )
+                              : _AttachmentLabelDisplay(
+                                  label: attachment.label,
+                                  onTap: _startEditingLabel,
+                                ),
                         ),
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) {
-                          _saveLabel();
-                          setState(() {
-                            _isEditingLabel = false;
-                          });
-                        },
-                        onTapOutside: (_) => _saveLabel(),
-                      )
-                    else
-                      _AttachmentLabelDisplay(
-                        label: attachment.label,
-                        onTap: _startEditingLabel,
-                      ),
+                        const SizedBox(width: 4),
+                        _AttachmentOverflowButton(
+                          enabled: canAccess,
+                          itemBuilder: (context) => [
+                            if (attachment.kind == AttachmentKind.image)
+                              const PopupMenuItem<_AttachmentMenuAction>(
+                                value: _AttachmentMenuAction.saveToGallery,
+                                child: _AttachmentMenuRow(
+                                  icon: Icons.download_rounded,
+                                  label: '保存到相册',
+                                ),
+                              ),
+                            const PopupMenuItem<_AttachmentMenuAction>(
+                              value: _AttachmentMenuAction.copyUrl,
+                              child: _AttachmentMenuRow(
+                                icon: Icons.content_copy_rounded,
+                                label: '复制链接',
+                              ),
+                            ),
+                          ],
+                          onSelected: (action) {
+                            switch (action) {
+                              case _AttachmentMenuAction.saveToGallery:
+                                _saveAttachmentToGallery(
+                                  context,
+                                  state,
+                                  attachment,
+                                );
+                              case _AttachmentMenuAction.copyUrl:
+                                _copyAttachmentUrl(context, state, attachment);
+                            }
+                          },
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 4),
                     Text(
                       [
@@ -1325,34 +1364,6 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                 label: _showTagEditor ? '收起' : '标签',
                 onPressed: () =>
                     setState(() => _showTagEditor = !_showTagEditor),
-              ),
-              _AttachmentOverflowButton(
-                enabled: canAccess,
-                itemBuilder: (context) => [
-                  if (attachment.kind == AttachmentKind.image)
-                    const PopupMenuItem<_AttachmentMenuAction>(
-                      value: _AttachmentMenuAction.saveToGallery,
-                      child: _AttachmentMenuRow(
-                        icon: Icons.download_rounded,
-                        label: '保存到相册',
-                      ),
-                    ),
-                  const PopupMenuItem<_AttachmentMenuAction>(
-                    value: _AttachmentMenuAction.copyUrl,
-                    child: _AttachmentMenuRow(
-                      icon: Icons.content_copy_rounded,
-                      label: '复制链接',
-                    ),
-                  ),
-                ],
-                onSelected: (action) {
-                  switch (action) {
-                    case _AttachmentMenuAction.saveToGallery:
-                      _saveAttachmentToGallery(context, state, attachment);
-                    case _AttachmentMenuAction.copyUrl:
-                      _copyAttachmentUrl(context, state, attachment);
-                  }
-                },
               ),
             ],
           ),
@@ -1715,35 +1726,18 @@ class _AttachmentOverflowButton extends StatelessWidget {
       tooltip: '更多操作',
       onSelected: onSelected,
       itemBuilder: itemBuilder,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: enabled
-              ? colorScheme.surfaceContainerHighest
-              : colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.more_horiz_rounded,
-              size: 18,
-              color: enabled
-                  ? colorScheme.onSurface
-                  : colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              '更多',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: enabled
-                    ? colorScheme.onSurface
-                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
-              ),
-            ),
-          ],
-        ),
+      icon: Icon(
+        Icons.more_vert_rounded,
+        size: 20,
+        color: enabled
+            ? colorScheme.onSurfaceVariant
+            : colorScheme.onSurfaceVariant.withValues(alpha: 0.42),
+      ),
+      style: IconButton.styleFrom(
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        minimumSize: const Size(36, 36),
+        padding: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
