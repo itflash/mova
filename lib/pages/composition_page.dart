@@ -343,6 +343,12 @@ class _CompositionClipCard extends StatelessWidget {
                   label: const Text('裁剪'),
                 ),
                 FilledButton.tonalIcon(
+                  onPressed: () =>
+                      state.pickAndReplaceCompositionVideo(clip.id),
+                  icon: const Icon(Icons.swap_horiz_rounded),
+                  label: const Text('更换'),
+                ),
+                FilledButton.tonalIcon(
                   onPressed: () => state.moveCompositionClip(clip.id, -1),
                   icon: const Icon(Icons.arrow_upward_rounded),
                   label: const Text('上移'),

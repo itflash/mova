@@ -55,6 +55,7 @@ void main() {
 
     expect(find.text('A.mp4'), findsOneWidget);
     expect(find.text('裁剪'), findsOneWidget);
+    expect(find.text('更换'), findsOneWidget);
     expect(find.text('上移'), findsOneWidget);
     expect(find.text('下移'), findsOneWidget);
     expect(find.text('删除'), findsOneWidget);

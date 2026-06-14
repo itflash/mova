@@ -711,6 +711,25 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> pickAndReplaceCompositionVideo(String clipId) async {
+    final picked = await _filePicker.pickSingleVideoFile();
+    final uri = picked?.uri.trim() ?? '';
+    if (picked == null || uri.isEmpty) return;
+
+    updateCompositionClip(
+      clipId,
+      (current) => current.copyWith(
+        label: picked.name,
+        sourceType: CompositionSourceType.localFile,
+        sourceUri: uri,
+        fileName: picked.name,
+        startMs: 0,
+        endMs: 15000,
+        clearSourceId: true,
+      ),
+    );
+  }
+
   Future<void> pickCompositionBgm() async {
     final picked = await _filePicker.pickSingleAudioFile();
     final uri = picked?.uri.trim() ?? '';
@@ -2327,7 +2346,9 @@ class AppState extends ChangeNotifier {
     return saved?['uri'] as String? ?? saved?['path'] as String?;
   }
 
-  Future<String?> importCompositionExportToLibrary({String category = ''}) async {
+  Future<String?> importCompositionExportToLibrary({
+    String category = '',
+  }) async {
     final result = compositionExportResult;
     if (result == null) return null;
     if (!isCurrentStorageConfigured) {
