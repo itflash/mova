@@ -774,7 +774,7 @@ class _CompositionClipPreview extends StatefulWidget {
 
 class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
   VideoPlayerController? _controller;
-  String? _error;
+  bool _ready = false;
 
   @override
   void initState() {
@@ -788,27 +788,25 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
     if (oldWidget.uri != widget.uri) {
       _controller?.dispose();
       _controller = null;
-      _error = null;
+      _ready = false;
       _initialize();
     }
   }
 
   Future<void> _initialize() async {
+    final controller = _createVideoController(widget.uri);
+    _controller = controller;
     try {
-      final controller = _createVideoController(widget.uri);
       await controller.initialize();
       await controller.setVolume(0);
-      if (!mounted) {
-        await controller.dispose();
-        return;
-      }
-      setState(() {
-        _controller = controller;
-      });
-    } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error.toString().replaceFirst('Exception: ', '');
+        _ready = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _ready = false;
       });
     }
   }
@@ -822,19 +820,15 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
-    if (_error != null) {
-      return _PreviewFallback(label: '预览失败：$_error');
-    }
-    if (controller == null || !controller.value.isInitialized) {
-      return const _PreviewFallback(label: '载入预览中');
+    if (!_ready || controller == null || !controller.value.isInitialized) {
+      return const _PreviewFallback(label: '视频暂不可播放');
     }
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () async {
-        if (controller.value.isPlaying) {
-          await controller.pause();
-        } else {
-          await controller.play();
-        }
+        controller.value.isPlaying
+            ? await controller.pause()
+            : await controller.play();
         if (mounted) setState(() {});
       },
       child: Stack(
@@ -846,6 +840,15 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
               width: controller.value.size.width,
               height: controller.value.size.height,
               child: VideoPlayer(controller),
+            ),
+          ),
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0x22000000), Color(0x8A000000)],
+              ),
             ),
           ),
           if (!controller.value.isPlaying)
@@ -886,29 +889,20 @@ class _PreviewFallback extends StatelessWidget {
 }
 
 VideoPlayerController _createVideoController(String value) {
-  final uri = Uri.parse(value);
-  if (value.startsWith('content://')) {
-    return VideoPlayerController.contentUri(
-      uri,
-      viewType: VideoViewType.platformView,
-    );
+  final uri = Uri.tryParse(value);
+  if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+    return VideoPlayerController.networkUrl(uri);
   }
-  if (value.startsWith('file://')) {
-    return VideoPlayerController.file(
-      File(uri.toFilePath()),
-      viewType: VideoViewType.platformView,
-    );
+  if (uri != null && uri.scheme == 'content' && Platform.isAndroid) {
+    return VideoPlayerController.contentUri(uri);
+  }
+  if (uri != null && uri.scheme == 'file') {
+    return VideoPlayerController.file(File.fromUri(uri));
   }
   if (value.startsWith('/')) {
-    return VideoPlayerController.file(
-      File(value),
-      viewType: VideoViewType.platformView,
-    );
+    return VideoPlayerController.file(File(value));
   }
-  return VideoPlayerController.networkUrl(
-    uri,
-    viewType: VideoViewType.platformView,
-  );
+  return VideoPlayerController.networkUrl(Uri.parse(value));
 }
 
 String _formatMs(int milliseconds) {
