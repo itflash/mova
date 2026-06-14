@@ -174,7 +174,8 @@ class CompositionPage extends StatelessWidget {
                     children: [
                       FilledButton.tonalIcon(
                         onPressed: () async {
-                          final saved = await state.saveCompositionExportToGallery();
+                          final saved = await state
+                              .saveCompositionExportToGallery();
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context)
                             ..hideCurrentSnackBar()
@@ -320,6 +321,11 @@ class _CompositionClipCard extends StatelessWidget {
                   icon: const Icon(Icons.arrow_downward_rounded),
                 ),
                 IconButton.filledTonal(
+                  tooltip: '裁剪片段',
+                  onPressed: () => _openTrimSheet(context, state, clip),
+                  icon: const Icon(Icons.cut_rounded),
+                ),
+                IconButton.filledTonal(
                   tooltip: '复制片段',
                   onPressed: () => state.duplicateCompositionClip(clip.id),
                   icon: const Icon(Icons.content_copy_rounded),
@@ -338,13 +344,241 @@ class _CompositionClipCard extends StatelessWidget {
   }
 }
 
+Future<void> _openTrimSheet(
+  BuildContext context,
+  AppState state,
+  CompositionClip clip,
+) async {
+  final updated = await showModalBottomSheet<CompositionClip>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    builder: (context) => _ClipTrimSheet(clip: clip),
+  );
+  if (updated == null) return;
+  state.updateCompositionClip(clip.id, (_) => updated);
+}
+
+class _ClipTrimSheet extends StatefulWidget {
+  const _ClipTrimSheet({required this.clip});
+
+  final CompositionClip clip;
+
+  @override
+  State<_ClipTrimSheet> createState() => _ClipTrimSheetState();
+}
+
+class _ClipTrimSheetState extends State<_ClipTrimSheet> {
+  late int _startMs;
+  late int _endMs;
+  int _positionMs = 0;
+  VideoPlayerController? _controller;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _startMs = widget.clip.startMs;
+    _endMs = widget.clip.endMs;
+    _positionMs = widget.clip.startMs;
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    try {
+      final controller = _createVideoController(widget.clip.sourceUri);
+      await controller.initialize();
+      await controller.setVolume(0);
+      await controller.seekTo(Duration(milliseconds: _positionMs));
+      controller.addListener(_syncPosition);
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() {
+        _controller = controller;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  void _syncPosition() {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    final next = controller.value.position.inMilliseconds;
+    if ((next - _positionMs).abs() < 250) return;
+    setState(() {
+      _positionMs = next;
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller?.removeListener(_syncPosition);
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  int get _durationMs {
+    final controller = _controller;
+    final duration = controller?.value.duration.inMilliseconds ?? 0;
+    return duration > 0 ? duration : (_endMs > 0 ? _endMs : 1);
+  }
+
+  bool get _canSave => _endMs > _startMs;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final controller = _controller;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + bottom),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('裁剪片段', style: theme.textTheme.titleLarge),
+              const SizedBox(height: 12),
+              AspectRatio(
+                aspectRatio: 16 / 9,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: _error != null
+                      ? _PreviewFallback(label: '预览失败：$_error')
+                      : controller == null || !controller.value.isInitialized
+                      ? const _PreviewFallback(label: '载入预览中')
+                      : Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            FittedBox(
+                              fit: BoxFit.contain,
+                              child: SizedBox(
+                                width: controller.value.size.width,
+                                height: controller.value.size.height,
+                                child: VideoPlayer(controller),
+                              ),
+                            ),
+                            Center(
+                              child: IconButton.filled(
+                                tooltip: controller.value.isPlaying
+                                    ? '暂停'
+                                    : '播放',
+                                onPressed: () async {
+                                  if (controller.value.isPlaying) {
+                                    await controller.pause();
+                                  } else {
+                                    await controller.play();
+                                  }
+                                  if (mounted) setState(() {});
+                                },
+                                icon: Icon(
+                                  controller.value.isPlaying
+                                      ? Icons.pause_rounded
+                                      : Icons.play_arrow_rounded,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '当前位置 ${_formatMs(_positionMs)} · 范围 ${_formatMs(_startMs)} - ${_formatMs(_endMs)}',
+                style: theme.textTheme.bodyMedium,
+              ),
+              Slider(
+                value: _positionMs.clamp(0, _durationMs).toDouble(),
+                min: 0,
+                max: _durationMs.toDouble(),
+                label: _formatMs(_positionMs),
+                onChanged: controller == null
+                    ? null
+                    : (value) async {
+                        final next = value.round();
+                        setState(() {
+                          _positionMs = next;
+                        });
+                        await controller.seekTo(Duration(milliseconds: next));
+                      },
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.tonalIcon(
+                    onPressed: () {
+                      setState(() {
+                        _startMs = _positionMs.clamp(0, _endMs - 1);
+                      });
+                    },
+                    icon: const Icon(Icons.first_page_rounded),
+                    label: const Text('设为开始'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () {
+                      setState(() {
+                        _endMs = _positionMs.clamp(_startMs + 1, _durationMs);
+                      });
+                    },
+                    icon: const Icon(Icons.last_page_rounded),
+                    label: const Text('设为结束'),
+                  ),
+                ],
+              ),
+              if (!_canSave) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '结束时间必须晚于开始时间。',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: _canSave
+                    ? () {
+                        Navigator.of(context).pop(
+                          widget.clip.copyWith(
+                            startMs: _startMs,
+                            endMs: _endMs,
+                          ),
+                        );
+                      }
+                    : null,
+                icon: const Icon(Icons.check_rounded),
+                label: const Text('保存裁剪'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CompositionClipPreview extends StatefulWidget {
   const _CompositionClipPreview({required this.uri});
 
   final String uri;
 
   @override
-  State<_CompositionClipPreview> createState() => _CompositionClipPreviewState();
+  State<_CompositionClipPreview> createState() =>
+      _CompositionClipPreviewState();
 }
 
 class _CompositionClipPreviewState extends State<_CompositionClipPreview> {

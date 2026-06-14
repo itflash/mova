@@ -54,11 +54,51 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('A.mp4'), findsOneWidget);
+    expect(find.byTooltip('裁剪片段'), findsOneWidget);
     expect(find.byTooltip('上移片段'), findsOneWidget);
     expect(find.byTooltip('下移片段'), findsOneWidget);
     expect(find.byTooltip('复制片段'), findsOneWidget);
     expect(find.byTooltip('删除片段'), findsOneWidget);
     expect(find.text('转场'), findsOneWidget);
+  });
+
+  testWidgets('opens clip trim sheet with start and end controls', (
+    tester,
+  ) async {
+    final state = AppState()
+      ..addCompositionClip(
+        const CompositionClip.local(
+          id: 'clip-1',
+          label: 'A.mp4',
+          localUri: 'file:///tmp/a.mp4',
+          fileName: 'A.mp4',
+          startMs: 0,
+          endMs: 15000,
+        ),
+      );
+
+    await tester.pumpWidget(
+      AppScope(
+        state: state,
+        child: const MaterialApp(home: HomeShell()),
+      ),
+    );
+
+    await tester.tap(find.text('剪辑'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byTooltip('裁剪片段'),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('裁剪片段'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('裁剪片段'), findsOneWidget);
+    expect(find.text('设为开始'), findsOneWidget);
+    expect(find.text('设为结束'), findsOneWidget);
+    expect(find.text('保存裁剪'), findsOneWidget);
   });
 
   testWidgets('exposes accessible add local video action', (tester) async {
@@ -138,26 +178,27 @@ void main() {
   testWidgets('export button exports composition and shows result', (
     tester,
   ) async {
-    final state = AppState(
-      videoCompositionService: _FakeVideoCompositionService(
-        result: const CompositionExportResult(
-          localPath: '/tmp/out.mp4',
-          fileName: 'out.mp4',
-          durationMs: 1000,
-          width: 1920,
-          height: 1080,
-        ),
-      ),
-    )..addCompositionClip(
-        const CompositionClip.local(
-          id: 'clip-1',
-          label: 'A.mp4',
-          localUri: 'file:///tmp/a.mp4',
-          fileName: 'A.mp4',
-          startMs: 0,
-          endMs: 1000,
-        ),
-      );
+    final state =
+        AppState(
+          videoCompositionService: _FakeVideoCompositionService(
+            result: const CompositionExportResult(
+              localPath: '/tmp/out.mp4',
+              fileName: 'out.mp4',
+              durationMs: 1000,
+              width: 1920,
+              height: 1080,
+            ),
+          ),
+        )..addCompositionClip(
+          const CompositionClip.local(
+            id: 'clip-1',
+            label: 'A.mp4',
+            localUri: 'file:///tmp/a.mp4',
+            fileName: 'A.mp4',
+            startMs: 0,
+            endMs: 1000,
+          ),
+        );
 
     await tester.pumpWidget(
       AppScope(
@@ -218,7 +259,9 @@ class _FakeVideoCompositionService extends VideoCompositionService {
   final CompositionExportResult result;
 
   @override
-  Future<CompositionExportResult> export(VideoCompositionProject project) async {
+  Future<CompositionExportResult> export(
+    VideoCompositionProject project,
+  ) async {
     return result;
   }
 }
