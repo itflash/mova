@@ -70,6 +70,7 @@ class AppState extends ChangeNotifier {
   final Map<String, int> attachmentLastUsedAt = {};
   String libraryQuery = '';
   LibraryFilter libraryFilter = LibraryFilter.all;
+  LibraryViewMode libraryViewMode = LibraryViewMode.comfortable;
   bool libraryRecentFirst = true;
   final List<String> selectedCategoryFilters = [];
   String mentionQuery = '';
@@ -100,9 +101,22 @@ class AppState extends ChangeNotifier {
   bool isSubmittingImageTask = false;
   String? imageSubmitErrorMessage;
   TaskTab activeTaskTab = TaskTab.video;
+  bool showArchivedTasks = false;
 
   void setActiveTaskTab(TaskTab tab) {
     activeTaskTab = tab;
+    notifyListeners();
+  }
+
+  void setShowArchivedTasks(bool value) {
+    if (showArchivedTasks == value) return;
+    showArchivedTasks = value;
+    notifyListeners();
+  }
+
+  void setLibraryViewMode(LibraryViewMode mode) {
+    if (libraryViewMode == mode) return;
+    libraryViewMode = mode;
     notifyListeners();
   }
 
@@ -283,10 +297,12 @@ class AppState extends ChangeNotifier {
         .toList();
   }
 
-  Attachment? get selectedFirstFrameAttachment => _uploadedAttachmentById(
-    selectedFirstFrameAttachmentId,
-    kind: AttachmentKind.image,
-  );
+  Attachment? get selectedFirstFrameAttachment =>
+      _uploadedAttachmentById(
+        selectedFirstFrameAttachmentId,
+        kind: AttachmentKind.image,
+      ) ??
+      _legacySelectedImageAttachment;
 
   Attachment? get selectedLastFrameAttachment => _uploadedAttachmentById(
     selectedLastFrameAttachmentId,
@@ -1004,6 +1020,55 @@ class AppState extends ChangeNotifier {
     }
 
     removeFromLibrary(attachmentId);
+  }
+
+  Future<BatchDeleteAttachmentsResult> deleteAttachments(
+    Iterable<String> attachmentIds, {
+    bool deleteRemote = false,
+  }) async {
+    var deletedCount = 0;
+    final failures = <BatchDeleteAttachmentFailure>[];
+    for (final attachmentId in attachmentIds.toSet()) {
+      final attachment = library.cast<Attachment?>().firstWhere(
+        (item) => item?.id == attachmentId,
+        orElse: () => null,
+      );
+      if (attachment == null) continue;
+      try {
+        final canDeleteRemote =
+            deleteRemote && attachment.objectKey?.trim().isNotEmpty == true;
+        await deleteAttachment(attachmentId, deleteRemote: canDeleteRemote);
+        deletedCount++;
+      } on Exception catch (error) {
+        failures.add(
+          BatchDeleteAttachmentFailure(
+            attachment: attachment,
+            message: _cleanError(error),
+          ),
+        );
+      }
+    }
+    return BatchDeleteAttachmentsResult(
+      deletedCount: deletedCount,
+      failures: failures,
+    );
+  }
+
+  void archiveTask(String taskId) {
+    final index = tasks.indexWhere((task) => task.id == taskId);
+    if (index == -1) return;
+    tasks[index] = tasks[index].copyWith(archivedAt: DateTime.now());
+    expandedPollLogTaskIds.remove(taskId);
+    notifyListeners();
+    _stopAutoPollingIfIdle();
+  }
+
+  void restoreTask(String taskId) {
+    final index = tasks.indexWhere((task) => task.id == taskId);
+    if (index == -1) return;
+    tasks[index] = tasks[index].copyWith(clearArchivedAt: true);
+    notifyListeners();
+    _startAutoPollingIfNeeded();
   }
 
   void _markAttachmentUsed(String attachmentId) {
@@ -2172,7 +2237,9 @@ class AppState extends ChangeNotifier {
         remoteUrl,
         fileName,
         onProgress: (progress) {
-          final latestIndex = library.indexWhere((item) => item.id == attachmentId);
+          final latestIndex = library.indexWhere(
+            (item) => item.id == attachmentId,
+          );
           if (latestIndex == -1) return;
           library[latestIndex] = library[latestIndex].copyWith(
             localStatus: AttachmentLocalStatus.downloading,
@@ -2239,10 +2306,10 @@ class AppState extends ChangeNotifier {
     String sourcePath,
     String fileName,
   ) {
-    return _mediaChannel.invokeMapMethod<String, Object?>('saveVideoToGallery', {
-      'sourcePath': sourcePath,
-      'fileName': fileName,
-    });
+    return _mediaChannel.invokeMapMethod<String, Object?>(
+      'saveVideoToGallery',
+      {'sourcePath': sourcePath, 'fileName': fileName},
+    );
   }
 
   Future<String?> saveCapturedFrameToGallery(CapturedFrameResult frame) async {
@@ -2330,6 +2397,7 @@ class AppState extends ChangeNotifier {
         storageBucket: result.storageBucket,
         storageEndpoint: result.storageEndpoint,
         storageRegion: result.storageRegion,
+        fileSizeBytes: result.fileSizeBytes,
       ),
     );
     notifyListeners();
@@ -2527,6 +2595,7 @@ class AppState extends ChangeNotifier {
             storageBucket: result.storageBucket,
             storageEndpoint: result.storageEndpoint,
             storageRegion: result.storageRegion,
+            fileSizeBytes: result.fileSizeBytes,
           );
         }
         successCount++;
@@ -2870,6 +2939,7 @@ class AppState extends ChangeNotifier {
 
   bool get _hasPollingTasks => tasks.any(
     (task) =>
+        !task.isArchived &&
         task.pollingStatus == PollingStatus.polling &&
         (task.status == TaskStatus.submitted ||
             task.status == TaskStatus.inProgress),
@@ -2881,6 +2951,7 @@ class AppState extends ChangeNotifier {
         .where(
           (task) =>
               task.pollingStatus == PollingStatus.polling &&
+              !task.isArchived &&
               (task.status == TaskStatus.submitted ||
                   task.status == TaskStatus.inProgress) &&
               !_refreshingTaskIds.contains(task.id),
@@ -2980,7 +3051,10 @@ class AppState extends ChangeNotifier {
       'settings': _settingsToJson(settings),
       'categories': categories,
       'library': library.map(_attachmentToJson).toList(),
-      'recentVideoSources': recentVideoSources.map(_recentVideoSourceToJson).toList(),
+      'recentVideoSources': recentVideoSources
+          .map(_recentVideoSourceToJson)
+          .toList(),
+      'libraryViewMode': libraryViewMode.name,
       'libraryRecentFirst': libraryRecentFirst,
       'attachmentLastUsedAt': attachmentLastUsedAt,
       'selectedAttachmentIds': selectedAttachmentIds,
@@ -2990,6 +3064,7 @@ class AppState extends ChangeNotifier {
       'bucketOptions': bucketOptions,
       'domainOptions': domainOptions,
       'activeTaskTab': activeTaskTab.name,
+      'showArchivedTasks': showArchivedTasks,
     };
   }
 
@@ -3009,6 +3084,11 @@ class AppState extends ChangeNotifier {
     metadata = _metadataFromJson(map['metadata']);
     settings = _settingsFromJson(map['settings']);
     _initializeToolResolutions();
+    libraryViewMode = _enumValue(
+      LibraryViewMode.values,
+      map['libraryViewMode'],
+      LibraryViewMode.comfortable,
+    );
     libraryRecentFirst = _boolValue(map['libraryRecentFirst'], true);
     categories
       ..clear()
@@ -3060,6 +3140,7 @@ class AppState extends ChangeNotifier {
       map['activeTaskTab'],
       TaskTab.video,
     );
+    showArchivedTasks = _boolValue(map['showArchivedTasks'], false);
     prompt = _normalizedVideoPromptForMode(prompt, activeMode);
   }
 
@@ -3303,6 +3384,7 @@ class AppState extends ChangeNotifier {
     'storageBucket': value.storageBucket,
     'storageEndpoint': value.storageEndpoint,
     'storageRegion': value.storageRegion,
+    'fileSizeBytes': value.fileSizeBytes,
   };
 
   Map<String, Object?> _recentVideoSourceToJson(RecentVideoSource value) => {
@@ -3369,6 +3451,9 @@ class AppState extends ChangeNotifier {
       storageBucket: _nullableStringValue(map['storageBucket']),
       storageEndpoint: _nullableStringValue(map['storageEndpoint']),
       storageRegion: _nullableStringValue(map['storageRegion']),
+      fileSizeBytes: map['fileSizeBytes'] is num
+          ? (map['fileSizeBytes'] as num).round()
+          : null,
     );
   }
 
@@ -3425,6 +3510,7 @@ class AppState extends ChangeNotifier {
         ? _imageMetadataToJson(value.imageMetadata!)
         : null,
     'imageMode': value.imageMode?.name,
+    'archivedAt': value.archivedAt?.toIso8601String(),
   };
 
   TaskRecord _taskFromJson(Object? value) {
@@ -3492,6 +3578,7 @@ class AppState extends ChangeNotifier {
               map['imageMode'],
               ImageCreateMode.textToImage,
             ),
+      archivedAt: DateTime.tryParse(_stringValue(map['archivedAt'], '')),
     );
   }
 
@@ -3685,6 +3772,17 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  Attachment? get _legacySelectedImageAttachment {
+    for (final attachmentId in selectedAttachmentIds) {
+      final attachment = _uploadedAttachmentById(
+        attachmentId,
+        kind: AttachmentKind.image,
+      );
+      if (attachment != null) return attachment;
+    }
+    return null;
+  }
+
   String _normalizedVideoPromptForMode(String value, ModeId mode) {
     if (mode == ModeId.reference) {
       return value;
@@ -3713,6 +3811,26 @@ class AppState extends ChangeNotifier {
     _transferringImageTaskIds.clear();
     super.dispose();
   }
+}
+
+class BatchDeleteAttachmentsResult {
+  const BatchDeleteAttachmentsResult({
+    required this.deletedCount,
+    required this.failures,
+  });
+
+  final int deletedCount;
+  final List<BatchDeleteAttachmentFailure> failures;
+}
+
+class BatchDeleteAttachmentFailure {
+  const BatchDeleteAttachmentFailure({
+    required this.attachment,
+    required this.message,
+  });
+
+  final Attachment attachment;
+  final String message;
 }
 
 enum _AttachmentAccessPurpose { preview, share, seedance }

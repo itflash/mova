@@ -1,5 +1,6 @@
 import Flutter
 import AVFoundation
+import Photos
 import PhotosUI
 import UIKit
 
@@ -7,6 +8,7 @@ import UIKit
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var fileChannel: FlutterMethodChannel?
   private var videoFramesChannel: FlutterMethodChannel?
+  private var mediaChannel: FlutterMethodChannel?
   private var documentPickerResult: FlutterResult?
   private var photoPickerResult: FlutterResult?
   private var pickerMode: PickerMode = .media
@@ -73,6 +75,82 @@ import UIKit
       }
     }
     self.videoFramesChannel = videoFramesChannel
+
+    let mediaChannel = FlutterMethodChannel(name: "mova/media", binaryMessenger: messenger)
+    mediaChannel.setMethodCallHandler { [weak self] call, result in
+      guard let self else { return }
+      guard let args = call.arguments as? [String: Any] else {
+        result(FlutterError(code: "media_failed", message: "缺少媒体参数。", details: nil))
+        return
+      }
+      let sourcePath = args["sourcePath"] as? String
+      let fileName = args["fileName"] as? String
+      switch call.method {
+      case "saveImageToGallery":
+        self.saveImageToGallery(sourcePath: sourcePath, fileName: fileName, result: result)
+      case "saveVideoToGallery":
+        self.saveVideoToGallery(sourcePath: sourcePath, fileName: fileName, result: result)
+      case "openMedia":
+        result(FlutterMethodNotImplemented)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+    self.mediaChannel = mediaChannel
+  }
+
+  private func saveImageToGallery(sourcePath: String?, fileName: String?, result: @escaping FlutterResult) {
+    guard let sourcePath, !sourcePath.isEmpty else {
+      result(FlutterError(code: "save_failed", message: "缺少图片路径。", details: nil))
+      return
+    }
+    let url = URL(fileURLWithPath: sourcePath)
+    guard FileManager.default.fileExists(atPath: url.path) else {
+      result(FlutterError(code: "save_failed", message: "源图片不存在。", details: nil))
+      return
+    }
+    PHPhotoLibrary.shared().performChanges({
+      PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: url)
+    }) { success, error in
+      DispatchQueue.main.async {
+        if let error {
+          result(FlutterError(code: "save_failed", message: error.localizedDescription, details: nil))
+          return
+        }
+        if success {
+          result(["path": fileName ?? url.lastPathComponent, "uri": url.absoluteString])
+        } else {
+          result(FlutterError(code: "save_failed", message: "保存图片失败。", details: nil))
+        }
+      }
+    }
+  }
+
+  private func saveVideoToGallery(sourcePath: String?, fileName: String?, result: @escaping FlutterResult) {
+    guard let sourcePath, !sourcePath.isEmpty else {
+      result(FlutterError(code: "save_failed", message: "缺少视频路径。", details: nil))
+      return
+    }
+    let url = URL(fileURLWithPath: sourcePath)
+    guard FileManager.default.fileExists(atPath: url.path) else {
+      result(FlutterError(code: "save_failed", message: "源视频不存在。", details: nil))
+      return
+    }
+    PHPhotoLibrary.shared().performChanges({
+      PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+    }) { success, error in
+      DispatchQueue.main.async {
+        if let error {
+          result(FlutterError(code: "save_failed", message: error.localizedDescription, details: nil))
+          return
+        }
+        if success {
+          result(["path": fileName ?? url.lastPathComponent, "uri": url.absoluteString])
+        } else {
+          result(FlutterError(code: "save_failed", message: "保存视频失败。", details: nil))
+        }
+      }
+    }
   }
 
   private func presentVideoPicker(result: @escaping FlutterResult) {

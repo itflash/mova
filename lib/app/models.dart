@@ -37,6 +37,8 @@ enum AttachmentLocalStatus { none, downloading, ready, error }
 
 enum LibraryFilter { all, image, video, audio }
 
+enum LibraryViewMode { comfortable, compact }
+
 enum TaskStatus { submitted, inProgress, success, failure }
 
 enum PollingStatus { idle, polling, paused, error }
@@ -306,6 +308,7 @@ class Attachment {
     this.storageBucket,
     this.storageEndpoint,
     this.storageRegion,
+    this.fileSizeBytes,
   });
 
   final String id;
@@ -328,6 +331,7 @@ class Attachment {
   final String? storageBucket;
   final String? storageEndpoint;
   final String? storageRegion;
+  final int? fileSizeBytes;
 
   Attachment copyWith({
     String? label,
@@ -349,10 +353,12 @@ class Attachment {
     String? storageBucket,
     String? storageEndpoint,
     String? storageRegion,
+    int? fileSizeBytes,
     bool clearLocalResourceUri = false,
     bool clearLocalFileName = false,
     bool clearLocalUpdatedAt = false,
     bool clearLocalErrorMessage = false,
+    bool clearFileSizeBytes = false,
   }) {
     return Attachment(
       id: id,
@@ -365,7 +371,8 @@ class Attachment {
       status: status ?? this.status,
       url: url ?? this.url,
       localStatus: localStatus ?? this.localStatus,
-      localDownloadProgress: localDownloadProgress ?? this.localDownloadProgress,
+      localDownloadProgress:
+          localDownloadProgress ?? this.localDownloadProgress,
       localResourceUri: clearLocalResourceUri
           ? null
           : (localResourceUri ?? this.localResourceUri),
@@ -383,6 +390,9 @@ class Attachment {
       storageBucket: storageBucket ?? this.storageBucket,
       storageEndpoint: storageEndpoint ?? this.storageEndpoint,
       storageRegion: storageRegion ?? this.storageRegion,
+      fileSizeBytes: clearFileSizeBytes
+          ? null
+          : (fileSizeBytes ?? this.fileSizeBytes),
     );
   }
 }
@@ -503,6 +513,7 @@ class TaskRecord {
     this.imageResults = const [],
     this.imageMetadata,
     this.imageMode,
+    this.archivedAt,
   });
 
   final String id;
@@ -534,6 +545,9 @@ class TaskRecord {
   final List<ImageTaskResultItem> imageResults;
   final ImageMetadataState? imageMetadata;
   final ImageCreateMode? imageMode;
+  final DateTime? archivedAt;
+
+  bool get isArchived => archivedAt != null;
 
   TaskRecord copyWith({
     ModeId? mode,
@@ -573,8 +587,10 @@ class TaskRecord {
     List<ImageTaskResultItem>? imageResults,
     ImageMetadataState? imageMetadata,
     ImageCreateMode? imageMode,
+    DateTime? archivedAt,
     bool clearImageMetadata = false,
     bool clearImageMode = false,
+    bool clearArchivedAt = false,
   }) {
     return TaskRecord(
       id: id,
@@ -616,6 +632,7 @@ class TaskRecord {
           ? null
           : (imageMetadata ?? this.imageMetadata),
       imageMode: clearImageMode ? null : (imageMode ?? this.imageMode),
+      archivedAt: clearArchivedAt ? null : (archivedAt ?? this.archivedAt),
     );
   }
 }

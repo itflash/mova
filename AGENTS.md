@@ -90,11 +90,62 @@ Build Android release APKs:
 <FLUTTER_BIN> build apk --release --split-per-abi
 ```
 
+Build Android release APK for ARM64 only:
+
+```bash
+<FLUTTER_BIN> build apk --release --split-per-abi --target-platform android-arm64
+```
+
 Common output directory:
 
 ```bash
 build/app/outputs/flutter-apk/
 ```
+
+## Android Release Signing
+
+- `android/app/build.gradle.kts` now prefers release signing from `android/key.properties`
+- If `android/key.properties` or the referenced keystore is missing, release builds fall back to debug signing
+- Local release keystore path:
+
+```bash
+android/release.keystore
+```
+
+- Local signing config path:
+
+```bash
+android/key.properties
+```
+
+- Example config template:
+
+```bash
+android/key.properties.example
+```
+
+- `android/key.properties`, `android/*.jks`, and `android/*.keystore` are gitignored and must not be committed
+
+Expected `android/key.properties` format:
+
+```properties
+storePassword=...
+keyPassword=...
+keyAlias=...
+storeFile=release.keystore
+```
+
+GitHub Actions Android release signing secrets:
+
+```text
+ANDROID_KEYSTORE_BASE64
+ANDROID_KEYSTORE_PASSWORD
+ANDROID_KEY_ALIAS
+ANDROID_KEY_PASSWORD
+```
+
+- GitHub workflow writes `android/release.keystore` and `android/key.properties` at build time from those secrets
+- If the same keystore is used locally and in GitHub Actions, release APK signatures will match
 
 ## Repo Notes
 

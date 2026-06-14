@@ -1,4 +1,9 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
+import 'package:photo_view/photo_view.dart';
 import 'package:video_player/video_player.dart';
 
 import '../app/app_scope.dart';
@@ -64,6 +69,7 @@ class AttachmentThumb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final background = Theme.of(context).colorScheme.surfaceContainer;
+    final trimmedOverlayLabel = overlayLabel.trim();
     Widget child;
     switch (attachment.kind) {
       case AttachmentKind.image:
@@ -97,29 +103,33 @@ class AttachmentThumb extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             child,
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0x00000000), Color(0xAA000000)],
+            if (trimmedOverlayLabel.isNotEmpty)
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 5,
                   ),
-                ),
-                child: Text(
-                  overlayLabel,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0x00000000), Color(0xAA000000)],
+                    ),
+                  ),
+                  child: Text(
+                    trimmedOverlayLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -144,6 +154,7 @@ class AttachmentPreviewSheet extends StatefulWidget {
 class _AttachmentPreviewSheetState extends State<AttachmentPreviewSheet> {
   late final PageController _pageController;
   late int _currentIndex;
+  bool _imageZoomed = false;
 
   @override
   void initState() {
@@ -197,10 +208,14 @@ class _AttachmentPreviewSheetState extends State<AttachmentPreviewSheet> {
               height: 360,
               child: PageView.builder(
                 controller: _pageController,
+                physics: _imageZoomed
+                    ? const NeverScrollableScrollPhysics()
+                    : const PageScrollPhysics(),
                 itemCount: widget.attachments.length,
                 onPageChanged: (index) {
                   setState(() {
                     _currentIndex = index;
+                    _imageZoomed = false;
                   });
                 },
                 itemBuilder: (context, index) {
@@ -208,19 +223,15 @@ class _AttachmentPreviewSheetState extends State<AttachmentPreviewSheet> {
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 2),
                     child: switch (current.kind) {
-                      AttachmentKind.image => ClipRRect(
-                        borderRadius: BorderRadius.circular(24),
-                        child: InteractiveViewer(
-                          minScale: 1,
-                          maxScale: 4,
-                          child: AspectRatio(
-                            aspectRatio: 1,
-                            child: _ResolvedAttachmentImage(
-                              attachment: current,
-                              fit: BoxFit.contain,
-                            ),
-                          ),
-                        ),
+                      AttachmentKind.image => _ZoomableAttachmentImage(
+                        attachment: current,
+                        onZoomChanged: (zoomed) {
+                          if (_currentIndex != index ||
+                              _imageZoomed == zoomed) {
+                            return;
+                          }
+                          setState(() => _imageZoomed = zoomed);
+                        },
                       ),
                       AttachmentKind.video => PreviewVideoPlayer(
                         attachment: current,
@@ -250,6 +261,275 @@ class _AttachmentPreviewSheetState extends State<AttachmentPreviewSheet> {
   }
 }
 
+class _ZoomableAttachmentImage extends StatefulWidget {
+  const _ZoomableAttachmentImage({
+    required this.attachment,
+    required this.onZoomChanged,
+  });
+
+  final Attachment attachment;
+  final ValueChanged<bool> onZoomChanged;
+
+  @override
+  State<_ZoomableAttachmentImage> createState() =>
+      _ZoomableAttachmentImageState();
+}
+
+class _ZoomableAttachmentImageState extends State<_ZoomableAttachmentImage> {
+  late final PhotoViewController _photoViewController;
+  late final StreamSubscription<PhotoViewControllerValue>
+  _photoViewSubscription;
+  OverlayEntry? _feedbackEntry;
+  Timer? _feedbackTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _photoViewController = PhotoViewController();
+    _photoViewSubscription = _photoViewController.outputStateStream.listen(
+      _notifyZoomChanged,
+    );
+  }
+
+  @override
+  void dispose() {
+    _feedbackTimer?.cancel();
+    _feedbackEntry?.remove();
+    _photoViewSubscription.cancel();
+    _photoViewController.dispose();
+    super.dispose();
+  }
+
+  void _notifyZoomChanged(PhotoViewControllerValue value) {
+    widget.onZoomChanged((value.scale ?? 1) > 1.05);
+  }
+
+  Future<void> _confirmSaveToGallery() async {
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('保存到相册', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(
+                widget.attachment.label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('取消'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      icon: const Icon(Icons.save_alt_rounded, size: 18),
+                      label: const Text('保存'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (confirmed == true) {
+      await _saveToGallery();
+    }
+  }
+
+  Future<void> _saveToGallery() async {
+    final state = AppScope.of(context);
+    try {
+      final saved = await state.saveAttachmentImageToGallery(
+        widget.attachment.id,
+      );
+      if (!mounted) return;
+      _showFeedback(saved == null ? '保存失败' : '已保存到系统相册');
+    } on Exception catch (error) {
+      if (!mounted) return;
+      _showFeedback(state.cleanErrorForDisplay(error), isError: true);
+    }
+  }
+
+  void _showFeedback(String message, {bool isError = false}) {
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final theme = Theme.of(context);
+    final mediaQuery = MediaQuery.of(context);
+    final background = isError
+        ? theme.colorScheme.errorContainer
+        : theme.colorScheme.inverseSurface;
+    final foreground = isError
+        ? theme.colorScheme.onErrorContainer
+        : theme.colorScheme.onInverseSurface;
+
+    _feedbackTimer?.cancel();
+    _feedbackEntry?.remove();
+    _feedbackEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        left: 20,
+        right: 20,
+        bottom: mediaQuery.padding.bottom + 28,
+        child: IgnorePointer(
+          child: Material(
+            color: Colors.transparent,
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 360),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: background,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x33000000),
+                        blurRadius: 18,
+                        offset: Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isError
+                              ? Icons.error_outline_rounded
+                              : Icons.check_circle_outline_rounded,
+                          size: 20,
+                          color: foreground,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            message,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: foreground,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    overlay.insert(_feedbackEntry!);
+    _feedbackTimer = Timer(const Duration(seconds: 2), () {
+      _feedbackEntry?.remove();
+      _feedbackEntry = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: GestureDetector(
+        onLongPress: _confirmSaveToGallery,
+        child: AspectRatio(
+          aspectRatio: 1,
+          child: _ResolvedAttachmentPhotoView(
+            attachment: widget.attachment,
+            controller: _photoViewController,
+            onScaleEnd: (_, _, value) => _notifyZoomChanged(value),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ResolvedAttachmentPhotoView extends StatelessWidget {
+  const _ResolvedAttachmentPhotoView({
+    required this.attachment,
+    required this.controller,
+    required this.onScaleEnd,
+  });
+
+  final Attachment attachment;
+  final PhotoViewController controller;
+  final PhotoViewImageScaleEndCallback onScaleEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    return FutureBuilder<String>(
+      future: state.resolveAttachmentPreviewUrl(attachment),
+      builder: (context, snapshot) {
+        final url = snapshot.data?.trim() ?? '';
+        if (url.isEmpty) {
+          return _FallbackThumb(
+            icon: Icons.image_outlined,
+            label: attachment.label,
+          );
+        }
+        return PhotoView(
+          imageProvider: NetworkImage(url),
+          controller: controller,
+          backgroundDecoration: const BoxDecoration(color: Colors.black),
+          minScale: PhotoViewComputedScale.contained,
+          initialScale: PhotoViewComputedScale.contained,
+          maxScale: PhotoViewComputedScale.covered * 4,
+          enablePanAlways: true,
+          gaplessPlayback: true,
+          onScaleEnd: onScaleEnd,
+          loadingBuilder: (context, event) => ColoredBox(
+            color: Colors.black,
+            child: Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  value: event?.expectedTotalBytes == null
+                      ? null
+                      : event!.cumulativeBytesLoaded /
+                            event.expectedTotalBytes!,
+                ),
+              ),
+            ),
+          ),
+          errorBuilder: (_, _, _) => _FallbackThumb(
+            icon: Icons.image_outlined,
+            label: attachment.label,
+          ),
+        );
+      },
+    );
+  }
+}
+
 class PreviewVideoPlayer extends StatefulWidget {
   const PreviewVideoPlayer({
     super.key,
@@ -266,6 +546,7 @@ class PreviewVideoPlayer extends StatefulWidget {
 
 class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
   VideoPlayerController? _controller;
+  ChewieController? _chewieController;
   bool _loading = true;
   bool _initialized = false;
 
@@ -288,8 +569,27 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
         });
         return;
       }
-      _controller = VideoPlayerController.networkUrl(Uri.parse(url));
+      _controller = _createAttachmentVideoController(url);
       await _controller!.initialize();
+      if (!mounted) return;
+      final primaryColor = Theme.of(context).colorScheme.primary;
+      _chewieController = ChewieController(
+        videoPlayerController: _controller!,
+        aspectRatio: _controller!.value.aspectRatio == 0
+            ? 16 / 9
+            : _controller!.value.aspectRatio,
+        autoPlay: false,
+        looping: false,
+        showOptions: false,
+        allowPlaybackSpeedChanging: false,
+        placeholder: const ColoredBox(color: Colors.black),
+        materialProgressColors: ChewieProgressColors(
+          playedColor: primaryColor,
+          handleColor: primaryColor,
+          bufferedColor: Colors.white38,
+          backgroundColor: Colors.white24,
+        ),
+      );
     } catch (_) {
       // Keep preview fallback non-blocking when temporary authorization fails.
     }
@@ -301,6 +601,7 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
 
   @override
   void dispose() {
+    _chewieController?.dispose();
     _controller?.dispose();
     super.dispose();
   }
@@ -318,7 +619,9 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
       );
     }
 
-    if (_controller == null || !_controller!.value.isInitialized) {
+    if (_controller == null ||
+        !_controller!.value.isInitialized ||
+        _chewieController == null) {
       return _PreviewFallback(icon: Icons.movie_outlined, label: widget.label);
     }
 
@@ -330,56 +633,7 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
           aspectRatio: _controller!.value.aspectRatio == 0
               ? 16 / 9
               : _controller!.value.aspectRatio,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Center(child: VideoPlayer(_controller!)),
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Color(0x00000000), Color(0xB3000000)],
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      IconButton.filledTonal(
-                        onPressed: () {
-                          final controller = _controller;
-                          if (controller == null) return;
-                          setState(() {
-                            if (controller.value.isPlaying) {
-                              controller.pause();
-                            } else {
-                              controller.play();
-                            }
-                          });
-                        },
-                        icon: Icon(
-                          _controller!.value.isPlaying
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          _controller!.value.isPlaying ? '播放中' : '点击播放',
-                          style: Theme.of(
-                            context,
-                          ).textTheme.bodyMedium?.copyWith(color: Colors.white),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
+          child: Chewie(controller: _chewieController!),
         ),
       ),
     );
@@ -467,7 +721,7 @@ class _ResolvedAttachmentVideoThumbState
       if (!mounted || url.trim().isEmpty) {
         return;
       }
-      _controller = VideoPlayerController.networkUrl(Uri.parse(url));
+      _controller = _createAttachmentVideoController(url);
       await _controller!.initialize();
     } catch (_) {
       // Keep thumb fallback non-blocking when temporary authorization fails.
@@ -536,7 +790,7 @@ class _VideoThumbState extends State<_VideoThumb> {
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
+    _controller = _createAttachmentVideoController(widget.url)
       ..initialize()
           .then((_) {
             if (!mounted) return;
@@ -579,6 +833,23 @@ class _VideoThumbState extends State<_VideoThumb> {
       ],
     );
   }
+}
+
+VideoPlayerController _createAttachmentVideoController(String value) {
+  final uri = Uri.tryParse(value);
+  if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+    return VideoPlayerController.networkUrl(uri);
+  }
+  if (uri != null && uri.scheme == 'content' && Platform.isAndroid) {
+    return VideoPlayerController.contentUri(uri);
+  }
+  if (uri != null && uri.scheme == 'file') {
+    return VideoPlayerController.file(File.fromUri(uri));
+  }
+  if (value.startsWith('/')) {
+    return VideoPlayerController.file(File(value));
+  }
+  return VideoPlayerController.networkUrl(Uri.parse(value));
 }
 
 class _FallbackThumb extends StatelessWidget {

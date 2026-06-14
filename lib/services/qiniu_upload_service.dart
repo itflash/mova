@@ -83,6 +83,7 @@ class QiniuUploadService {
       role: inferred.role,
       category: inferred.category,
       storageBucket: config.bucket,
+      fileSizeBytes: file.bytes.length,
     );
   }
 

@@ -1,5 +1,6 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import '../app/app_scope.dart';
@@ -12,16 +13,16 @@ import '../widgets/attachment_media.dart';
 class TasksPage extends StatelessWidget {
   const TasksPage({super.key});
 
-  static const MethodChannel _mediaChannel = MethodChannel('mova/media');
-
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final filteredTasks = state.tasks.where((task) {
       if (state.activeTaskTab == TaskTab.video) {
-        return task.kind == TaskKind.video;
+        return task.kind == TaskKind.video &&
+            task.isArchived == state.showArchivedTasks;
       }
-      return task.kind == TaskKind.image;
+      return task.kind == TaskKind.image &&
+          task.isArchived == state.showArchivedTasks;
     }).toList();
 
     return AppPageScaffold(
@@ -32,27 +33,14 @@ class TasksPage extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
-            child: SegmentedButton<TaskTab>(
-              segments: const [
-                ButtonSegment<TaskTab>(
-                  value: TaskTab.video,
-                  label: Text('视频'),
-                  icon: Icon(Icons.movie_outlined, size: 18),
-                ),
-                ButtonSegment<TaskTab>(
-                  value: TaskTab.image,
-                  label: Text('图片'),
-                  icon: Icon(Icons.image_outlined, size: 18),
-                ),
-              ],
-              selected: {state.activeTaskTab},
-              onSelectionChanged: (selected) {
-                state.setActiveTaskTab(selected.first);
-              },
-              emptySelectionAllowed: false,
+            child: _TaskFilterBar(
+              activeTab: state.activeTaskTab,
+              showArchivedTasks: state.showArchivedTasks,
+              onTabChanged: state.setActiveTaskTab,
+              onArchiveFilterChanged: state.setShowArchivedTasks,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Expanded(
             child: filteredTasks.isEmpty
                 ? ListView(
@@ -111,27 +99,20 @@ class TasksPage extends StatelessWidget {
       _showToast(context, '当前没有可打开的媒体');
       return;
     }
-    final mimeType =
-        (task.localFileName ?? task.videoUrl ?? '').toLowerCase().contains(
-              '.jpg',
-            ) ||
-            (task.localFileName ?? task.videoUrl ?? '').toLowerCase().contains(
-              '.png',
-            ) ||
-            (task.localFileName ?? task.videoUrl ?? '').toLowerCase().contains(
-              '.jpeg',
-            )
-        ? 'image/*'
-        : 'video/*';
-    try {
-      await _mediaChannel.invokeMethod<bool>('openMedia', {
-        'uri': uri,
-        'mimeType': mimeType,
-      });
-    } on PlatformException catch (error) {
-      if (!context.mounted) return;
-      _showToast(context, error.message ?? '打开媒体失败');
-    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) => _TaskVideoPreviewSheet(
+        url: uri,
+        label: task.localFileName ?? task.videoUrl ?? '视频结果',
+      ),
+    );
   }
 
   Future<void> _confirmRetry(
@@ -168,6 +149,31 @@ class TasksPage extends StatelessWidget {
     state.deleteTask(task.id);
     if (!context.mounted) return;
     _showToast(context, '已删除任务');
+  }
+
+  Future<void> _confirmArchiveTask(
+    BuildContext context,
+    AppState state,
+    TaskRecord task,
+  ) async {
+    if (task.isArchived) {
+      state.restoreTask(task.id);
+      _showToast(context, '已恢复任务');
+      return;
+    }
+    final isActive = _isActive(task);
+    final confirmed =
+        !isActive ||
+        await confirmAction(
+          context,
+          title: '归档进行中的任务？',
+          message: '归档后此任务不会继续自动轮询，可以在归档列表中恢复。',
+          confirmLabel: '归档',
+        );
+    if (!confirmed) return;
+    state.archiveTask(task.id);
+    if (!context.mounted) return;
+    _showToast(context, '已归档任务');
   }
 
   Future<void> _openTaskDetail(BuildContext context, TaskRecord task) async {
@@ -263,12 +269,19 @@ class TasksPage extends StatelessWidget {
               copyValue: task.prompt,
             ),
             if (task.attachments.isNotEmpty)
-              _DetailBlock(
-                label: '本次素材',
-                value: task.attachments
-                    .map((item) => '${item.label} · ${item.category}')
-                    .join('\n'),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: _TaskAttachmentStrip(
+                  title: '本次素材',
+                  attachments: task.attachments,
+                  compact: false,
+                ),
               ),
+            if (task.pollLogs.isNotEmpty) ...[
+              Text('轮询日志', style: Theme.of(context).textTheme.labelMedium),
+              _PollLogPanel(logs: task.pollLogs),
+              const SizedBox(height: 14),
+            ],
             _JsonBlock(label: '请求入参', value: task.requestPreview),
             _JsonBlock(label: '任务响应', value: task.responsePreview),
           ],
@@ -362,6 +375,11 @@ class TasksPage extends StatelessWidget {
     return '${value.year}-${two(value.month)}-${two(value.day)} ${two(value.hour)}:${two(value.minute)}:${two(value.second)}';
   }
 
+  static String _formatCompactDateTime(DateTime value) {
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${two(value.month)}-${two(value.day)} ${two(value.hour)}:${two(value.minute)}';
+  }
+
   static IconData _iconForAttachment(AttachmentKind kind) {
     switch (kind) {
       case AttachmentKind.image:
@@ -371,6 +389,220 @@ class TasksPage extends StatelessWidget {
       case AttachmentKind.audio:
         return Icons.graphic_eq_outlined;
     }
+  }
+}
+
+class _TaskFilterBar extends StatelessWidget {
+  const _TaskFilterBar({
+    required this.activeTab,
+    required this.showArchivedTasks,
+    required this.onTabChanged,
+    required this.onArchiveFilterChanged,
+  });
+
+  final TaskTab activeTab;
+  final bool showArchivedTasks;
+  final ValueChanged<TaskTab> onTabChanged;
+  final ValueChanged<bool> onArchiveFilterChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _TaskFilterGroup<TaskTab>(
+            selected: activeTab,
+            options: const [
+              _TaskFilterOption(
+                value: TaskTab.video,
+                icon: Icons.movie_creation_outlined,
+                label: '视频',
+              ),
+              _TaskFilterOption(
+                value: TaskTab.image,
+                icon: Icons.image_outlined,
+                label: '图片',
+              ),
+            ],
+            onChanged: onTabChanged,
+          ),
+        ),
+        const SizedBox(width: 8),
+        _TaskArchiveMenu(
+          showArchivedTasks: showArchivedTasks,
+          onChanged: onArchiveFilterChanged,
+        ),
+      ],
+    );
+  }
+}
+
+class _TaskFilterOption<T> {
+  const _TaskFilterOption({
+    required this.value,
+    required this.icon,
+    required this.label,
+  });
+
+  final T value;
+  final IconData icon;
+  final String label;
+}
+
+class _TaskFilterGroup<T> extends StatelessWidget {
+  const _TaskFilterGroup({
+    required this.selected,
+    required this.options,
+    required this.onChanged,
+  });
+
+  final T selected;
+  final List<_TaskFilterOption<T>> options;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.58),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Row(
+        children: [
+          for (final option in options)
+            Expanded(
+              child: _TaskFilterChip<T>(
+                option: option,
+                selected: option.value == selected,
+                onTap: () => onChanged(option.value),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TaskFilterChip<T> extends StatelessWidget {
+  const _TaskFilterChip({
+    required this.option,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _TaskFilterOption<T> option;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final foreground = selected
+        ? colorScheme.primary
+        : colorScheme.onSurfaceVariant;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: option.label,
+      child: Material(
+        color: selected
+            ? colorScheme.primary.withValues(alpha: 0.12)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: selected ? null : onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
+            height: 36,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(option.icon, size: 17, color: foreground),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    option.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: foreground,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TaskArchiveMenu extends StatelessWidget {
+  const _TaskArchiveMenu({
+    required this.showArchivedTasks,
+    required this.onChanged,
+  });
+
+  final bool showArchivedTasks;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      label: '任务筛选菜单',
+      child: PopupMenuButton<bool>(
+        tooltip: '任务筛选',
+        initialValue: showArchivedTasks,
+        onSelected: onChanged,
+        padding: EdgeInsets.zero,
+        itemBuilder: (context) => const [
+          PopupMenuItem(
+            value: false,
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.inbox_outlined),
+              title: Text('当前任务'),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+          PopupMenuItem(
+            value: true,
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.archive_outlined),
+              title: Text('已归档'),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        ],
+        child: SizedBox.square(
+          dimension: 36,
+          child: Icon(
+            showArchivedTasks
+                ? Icons.archive_outlined
+                : Icons.more_vert_rounded,
+            size: 20,
+            color: showArchivedTasks
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -460,6 +692,68 @@ class _MetaPill extends StatelessWidget {
   }
 }
 
+class _TaskMetaRow extends StatelessWidget {
+  const _TaskMetaRow({required this.items});
+
+  final List<_TaskMetaItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        for (var index = 0; index < items.length; index++) ...[
+          Expanded(child: _TaskMetaChip(item: items[index])),
+          if (index != items.length - 1) const SizedBox(width: 6),
+        ],
+      ],
+    );
+  }
+}
+
+class _TaskMetaItem {
+  const _TaskMetaItem({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+}
+
+class _TaskMetaChip extends StatelessWidget {
+  const _TaskMetaChip({required this.item});
+
+  final _TaskMetaItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      height: 30,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(item.icon, size: 13, color: colorScheme.onSurfaceVariant),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              item.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ResultPanel extends StatelessWidget {
   const _ResultPanel({required this.task});
 
@@ -472,34 +766,12 @@ class _ResultPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('结果', style: Theme.of(context).textTheme.labelMedium),
-        const SizedBox(height: 10),
-        if (mediaUrl != null && mediaUrl.trim().isNotEmpty) ...[
-          InkWell(
-            borderRadius: BorderRadius.circular(18),
-            onTap: () => helper._openMedia(context, task),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: SizedBox(
-                width: double.infinity,
-                height: 180,
-                child: _TaskVideoPreview(
-                  url: mediaUrl,
-                  label: task.localFileName ?? '视频结果',
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
         Row(
           children: [
             Expanded(
               child: Text(
-                task.localFileName ?? task.videoUrl ?? '暂无结果文件',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
+                '结果视频',
+                style: Theme.of(context).textTheme.labelMedium,
               ),
             ),
             if (task.videoUrl != null)
@@ -511,13 +783,22 @@ class _ResultPanel extends StatelessWidget {
               ),
           ],
         ),
-        if (task.videoUrl != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            task.videoUrl!,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall,
+        const SizedBox(height: 8),
+        if (mediaUrl != null && mediaUrl.trim().isNotEmpty) ...[
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => helper._openMedia(context, task),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: SizedBox(
+                width: double.infinity,
+                height: 124,
+                child: _TaskVideoPreview(
+                  url: mediaUrl,
+                  label: task.localFileName ?? '视频结果',
+                ),
+              ),
+            ),
           ),
         ],
       ],
@@ -722,7 +1003,7 @@ class _TaskActionBar extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (task.status != TaskStatus.success) ...[
+        if (!task.isArchived && task.status != TaskStatus.success) ...[
           _PrimaryTaskButton(task: task),
           const SizedBox(width: 8),
         ],
@@ -766,13 +1047,18 @@ class _TaskActionBar extends StatelessWidget {
                 case 'delete':
                   await helper._confirmDeleteTask(context, state, task);
                   return;
+                case 'archive':
+                  await helper._confirmArchiveTask(context, state, task);
+                  return;
               }
             },
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'detail', child: Text('查看详情')),
-              const PopupMenuItem(value: 'refresh', child: Text('手动刷新')),
-              if (task.status == TaskStatus.submitted ||
-                  task.status == TaskStatus.inProgress)
+              if (!task.isArchived)
+                const PopupMenuItem(value: 'refresh', child: Text('手动刷新')),
+              if (!task.isArchived &&
+                  (task.status == TaskStatus.submitted ||
+                      task.status == TaskStatus.inProgress))
                 PopupMenuItem(
                   value: 'toggle',
                   child: Text(
@@ -781,7 +1067,7 @@ class _TaskActionBar extends StatelessWidget {
                         : '继续轮询',
                   ),
                 ),
-              if (task.status == TaskStatus.failure)
+              if (!task.isArchived && task.status == TaskStatus.failure)
                 const PopupMenuItem(value: 'retry', child: Text('重新提交')),
               if (task.status == TaskStatus.success)
                 const PopupMenuItem(value: 'download', child: Text('下载结果')),
@@ -789,6 +1075,10 @@ class _TaskActionBar extends StatelessWidget {
                 const PopupMenuItem(value: 'copy_url', child: Text('复制结果 URL')),
               const PopupMenuItem(value: 'copy', child: Text('复制到创作')),
               const PopupMenuItem(value: 'copy_id', child: Text('复制任务号')),
+              PopupMenuItem(
+                value: 'archive',
+                child: Text(task.isArchived ? '恢复任务' : '归档任务'),
+              ),
               const PopupMenuItem(value: 'delete', child: Text('删除任务')),
             ],
             child: const SizedBox(
@@ -843,10 +1133,8 @@ class _VideoTaskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.of(context);
     final tone = TasksPage()._toneForTask(context, task.status);
     final active = TasksPage()._isActive(task);
-    final logsExpanded = state.expandedPollLogTaskIds.contains(task.id);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -865,33 +1153,37 @@ class _VideoTaskCard extends StatelessWidget {
                       children: [
                         Text(
                           task.prompt,
-                          maxLines: 3,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _MetaPill(
+                        _TaskMetaRow(
+                          items: [
+                            _TaskMetaItem(
                               icon: Icons.schedule_rounded,
-                              label:
-                                  '创建 ${TasksPage._formatDateTime(task.createdAt)}',
-                            ),
-                            _MetaPill(
-                              icon: Icons.update_rounded,
-                              label:
-                                  '更新 ${TasksPage._formatDateTime(task.updatedAt)}',
-                            ),
-                            if (task.hasAnomaly)
-                              _MetaPill(
-                                icon: Icons.warning_amber_rounded,
-                                label: '异常',
-                                tone: Theme.of(context).colorScheme.error,
+                              label: TasksPage._formatCompactDateTime(
+                                task.updatedAt,
                               ),
+                            ),
+                            _TaskMetaItem(
+                              icon: Icons.bolt_outlined,
+                              label: '积分 ${task.estimatedCredit}',
+                            ),
+                            _TaskMetaItem(
+                              icon: Icons.attach_file_rounded,
+                              label: '素材 ${task.attachments.length}',
+                            ),
                           ],
                         ),
+                        if (task.hasAnomaly) ...[
+                          const SizedBox(height: 8),
+                          _MetaPill(
+                            icon: Icons.warning_amber_rounded,
+                            label: '异常',
+                            tone: Theme.of(context).colorScheme.error,
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -915,30 +1207,6 @@ class _VideoTaskCard extends StatelessWidget {
                   _TaskActionBar(task: task),
                 ],
               ),
-              const SizedBox(height: 10),
-              UtilityTile(
-                title: '状态详情',
-                subtitle: task.statusDetail ?? '等待更新',
-                trailing: ToolIconButton(
-                  tooltip: logsExpanded ? '收起轮询日志' : '查看轮询日志',
-                  icon: logsExpanded
-                      ? Icons.article_rounded
-                      : Icons.article_outlined,
-                  onPressed: () => state.toggleTaskPollLogs(task.id),
-                ),
-              ),
-              if (task.hasAnomaly) ...[
-                const PanelDivider(),
-                UtilityTile(
-                  title: '异常标识',
-                  subtitle: task.anomalyMessage ?? '上游结果异常，可手动刷新',
-                  trailing: Icon(
-                    Icons.warning_amber_rounded,
-                    color: Theme.of(context).colorScheme.error,
-                    size: 18,
-                  ),
-                ),
-              ],
               if (task.downloadStatus == DownloadStatus.downloading) ...[
                 const PanelDivider(),
                 Padding(
@@ -965,38 +1233,26 @@ class _VideoTaskCard extends StatelessWidget {
                 const SizedBox(height: 12),
                 _ResultPanel(task: task),
               ],
-              if (logsExpanded) ...[
-                const PanelDivider(),
-                _PollLogPanel(logs: task.pollLogs),
-              ],
               if (task.lastError != null) ...[
                 const PanelDivider(),
-                UtilityTile(
-                  title: '失败原因',
-                  subtitle: task.lastError!,
-                  trailing: Icon(
-                    Icons.error_outline_rounded,
-                    color: tone,
-                    size: 18,
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(
+                    task.lastError!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: tone),
                   ),
                 ),
               ],
               if (task.attachments.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: task.attachments
-                      .map(
-                        (attachment) => InputChip(
-                          label: Text(attachment.label),
-                          avatar: Icon(
-                            TasksPage._iconForAttachment(attachment.kind),
-                            size: 16,
-                          ),
-                        ),
-                      )
-                      .toList(),
+                const PanelDivider(),
+                const SizedBox(height: 12),
+                _TaskAttachmentStrip(
+                  title: '引用素材',
+                  attachments: task.attachments,
                 ),
               ],
             ],
@@ -1017,7 +1273,6 @@ class _ImageTaskCard extends StatelessWidget {
     final state = AppScope.of(context);
     final tone = TasksPage()._toneForTask(context, task.status);
     final active = TasksPage()._isActive(task);
-    final logsExpanded = state.expandedPollLogTaskIds.contains(task.id);
     final previewItems = task.imageResults
         .map((item) => _TaskImagePreviewData.fromResult(state, item))
         .whereType<_TaskImagePreviewData>()
@@ -1050,48 +1305,50 @@ class _ImageTaskCard extends StatelessWidget {
                       children: [
                         Text(
                           task.prompt,
-                          maxLines: 3,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _MetaPill(
+                        _TaskMetaRow(
+                          items: [
+                            _TaskMetaItem(
                               icon: Icons.schedule_rounded,
-                              label:
-                                  '创建 ${TasksPage._formatDateTime(task.createdAt)}',
+                              label: TasksPage._formatCompactDateTime(
+                                task.updatedAt,
+                              ),
                             ),
-                            _MetaPill(
-                              icon: Icons.update_rounded,
-                              label:
-                                  '更新 ${TasksPage._formatDateTime(task.updatedAt)}',
+                            _TaskMetaItem(
+                              icon: Icons.bolt_outlined,
+                              label: '积分 ${task.estimatedCredit}',
                             ),
-                            _MetaPill(
-                              icon: Icons.image_outlined,
-                              label: '${task.imageResults.length} 张',
-                            ),
-                            _MetaPill(
+                            _TaskMetaItem(
                               icon: Icons.check_circle_outline_rounded,
-                              label:
-                                  '已入库 $imported/${task.imageResults.length}',
+                              label: '入库 $imported/${task.imageResults.length}',
                             ),
-                            if (failed > 0)
-                              _MetaPill(
-                                icon: Icons.error_outline_rounded,
-                                label: '$failed 失败',
-                                tone: Theme.of(context).colorScheme.error,
-                              ),
-                            if (task.hasAnomaly)
-                              _MetaPill(
-                                icon: Icons.warning_amber_rounded,
-                                label: '异常',
-                                tone: Theme.of(context).colorScheme.error,
-                              ),
                           ],
                         ),
+                        if (failed > 0 || task.hasAnomaly) ...[
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              if (failed > 0)
+                                _MetaPill(
+                                  icon: Icons.error_outline_rounded,
+                                  label: '$failed 失败',
+                                  tone: Theme.of(context).colorScheme.error,
+                                ),
+                              if (task.hasAnomaly)
+                                _MetaPill(
+                                  icon: Icons.warning_amber_rounded,
+                                  label: '异常',
+                                  tone: Theme.of(context).colorScheme.error,
+                                ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -1115,38 +1372,14 @@ class _ImageTaskCard extends StatelessWidget {
                   _ImageTaskActionBar(task: task),
                 ],
               ),
-              const SizedBox(height: 10),
-              UtilityTile(
-                title: '状态详情',
-                subtitle: task.statusDetail ?? '等待更新',
-                trailing: ToolIconButton(
-                  tooltip: logsExpanded ? '收起轮询日志' : '查看轮询日志',
-                  icon: logsExpanded
-                      ? Icons.article_rounded
-                      : Icons.article_outlined,
-                  onPressed: () => state.toggleTaskPollLogs(task.id),
-                ),
-              ),
-              if (task.hasAnomaly) ...[
-                const PanelDivider(),
-                UtilityTile(
-                  title: '异常标识',
-                  subtitle: task.anomalyMessage ?? '上游结果异常，可手动刷新',
-                  trailing: Icon(
-                    Icons.warning_amber_rounded,
-                    color: Theme.of(context).colorScheme.error,
-                    size: 18,
-                  ),
-                ),
-              ],
               if (task.imageResults.isNotEmpty) ...[
                 const PanelDivider(),
                 const SizedBox(height: 12),
                 if (previewItems.isNotEmpty) ...[
                   Text('结果预览', style: Theme.of(context).textTheme.labelMedium),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   SizedBox(
-                    height: 112,
+                    height: 84,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       itemCount: previewItems.length,
@@ -1158,35 +1391,170 @@ class _ImageTaskCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
                 ],
-                ...task.imageResults.map(
-                  (item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: _ImageResultTile(item: item),
-                  ),
-                ),
-              ],
-              if (logsExpanded) ...[
-                const PanelDivider(),
-                _PollLogPanel(logs: task.pollLogs),
               ],
               if (task.lastError != null) ...[
                 const PanelDivider(),
-                UtilityTile(
-                  title: '失败原因',
-                  subtitle: task.lastError!,
-                  trailing: Icon(
-                    Icons.error_outline_rounded,
-                    color: tone,
-                    size: 18,
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(
+                    task.lastError!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: tone),
                   ),
+                ),
+              ],
+              if (task.attachments.isNotEmpty) ...[
+                const PanelDivider(),
+                const SizedBox(height: 12),
+                _TaskAttachmentStrip(
+                  title: '引用素材',
+                  attachments: task.attachments,
                 ),
               ],
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+class _TaskAttachmentStrip extends StatelessWidget {
+  const _TaskAttachmentStrip({
+    required this.title,
+    required this.attachments,
+    this.compact = true,
+  });
+
+  final String title;
+  final List<Attachment> attachments;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    if (attachments.isEmpty) return const SizedBox.shrink();
+    final colorScheme = Theme.of(context).colorScheme;
+    final height = compact ? 56.0 : 88.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: compact
+                    ? Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      )
+                    : Theme.of(context).textTheme.labelMedium,
+              ),
+            ),
+            Text(
+              '${attachments.length} 个',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colorScheme.outline),
+            ),
+          ],
+        ),
+        SizedBox(height: compact ? 6 : 8),
+        SizedBox(
+          height: height,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: attachments.length,
+            separatorBuilder: (_, _) => SizedBox(width: compact ? 8 : 10),
+            itemBuilder: (context, index) => _TaskAttachmentThumb(
+              attachment: attachments[index],
+              attachments: attachments,
+              compact: compact,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TaskAttachmentThumb extends StatelessWidget {
+  const _TaskAttachmentThumb({
+    required this.attachment,
+    required this.attachments,
+    required this.compact,
+  });
+
+  final Attachment attachment;
+  final List<Attachment> attachments;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    final canPreview = state.canAccessAttachment(attachment);
+    final width = compact ? 72.0 : 108.0;
+    final thumbHeight = compact ? 56.0 : 88.0;
+    final radius = compact ? 10.0 : 14.0;
+    final badgeSize = compact ? 18.0 : 24.0;
+    final badgeInset = compact ? 4.0 : 6.0;
+    final iconSize = compact ? 12.0 : 16.0;
+    return SizedBox(
+      width: width,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(radius),
+        onTap: canPreview
+            ? () => showAttachmentPreviewSheet(
+                context,
+                attachment,
+                attachments: attachments,
+              )
+            : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
+              children: [
+                AttachmentThumb(
+                  attachment: attachment,
+                  width: width,
+                  height: thumbHeight,
+                  radius: radius,
+                  overlayLabel: '',
+                ),
+                Positioned(
+                  right: badgeInset,
+                  bottom: badgeInset,
+                  child: Container(
+                    width: badgeSize,
+                    height: badgeSize,
+                    decoration: BoxDecoration(
+                      color: colorScheme.surface.withValues(
+                        alpha: compact ? 0.84 : 0.92,
+                      ),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Icon(
+                      attachment.kind == AttachmentKind.video
+                          ? Icons.play_arrow_rounded
+                          : TasksPage._iconForAttachment(attachment.kind),
+                      size: iconSize,
+                      color: compact
+                          ? colorScheme.onSurfaceVariant
+                          : colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1208,7 +1576,7 @@ class _TaskVideoPreviewState extends State<_TaskVideoPreview> {
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
+    _controller = _createTaskVideoController(widget.url)
       ..initialize()
           .then((_) {
             if (!mounted) return;
@@ -1269,6 +1637,195 @@ class _TaskVideoPreviewState extends State<_TaskVideoPreview> {
       ],
     );
   }
+}
+
+class _TaskVideoPreviewSheet extends StatelessWidget {
+  const _TaskVideoPreviewSheet({required this.url, required this.label});
+
+  final String url;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          8,
+          20,
+          24 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 360,
+              width: double.infinity,
+              child: _TaskVideoPlayer(url: url, label: label),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TaskVideoPlayer extends StatefulWidget {
+  const _TaskVideoPlayer({required this.url, required this.label});
+
+  final String url;
+  final String label;
+
+  @override
+  State<_TaskVideoPlayer> createState() => _TaskVideoPlayerState();
+}
+
+class _TaskVideoPlayerState extends State<_TaskVideoPlayer> {
+  VideoPlayerController? _controller;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    try {
+      final controller = _createTaskVideoController(widget.url);
+      await controller.initialize();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() {
+        _controller = controller;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Center(
+          child: Text('视频暂不可播放', style: Theme.of(context).textTheme.bodyMedium),
+        ),
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: ColoredBox(
+        color: Colors.black,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Center(
+              child: AspectRatio(
+                aspectRatio: controller.value.aspectRatio == 0
+                    ? 16 / 9
+                    : controller.value.aspectRatio,
+                child: VideoPlayer(controller),
+              ),
+            ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x00000000), Color(0xB3000000)],
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    IconButton.filledTonal(
+                      tooltip: controller.value.isPlaying ? '暂停' : '播放',
+                      onPressed: () {
+                        setState(() {
+                          controller.value.isPlaying
+                              ? controller.pause()
+                              : controller.play();
+                        });
+                      },
+                      icon: Icon(
+                        controller.value.isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: VideoProgressIndicator(
+                        controller,
+                        allowScrubbing: true,
+                        colors: const VideoProgressColors(
+                          playedColor: Colors.white,
+                          bufferedColor: Colors.white38,
+                          backgroundColor: Colors.white24,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+VideoPlayerController _createTaskVideoController(String value) {
+  final uri = Uri.tryParse(value);
+  if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+    return VideoPlayerController.networkUrl(uri);
+  }
+  if (uri != null && uri.scheme == 'content' && Platform.isAndroid) {
+    return VideoPlayerController.contentUri(uri);
+  }
+  if (uri != null && uri.scheme == 'file') {
+    return VideoPlayerController.file(File.fromUri(uri));
+  }
+  if (value.startsWith('/')) {
+    return VideoPlayerController.file(File(value));
+  }
+  return VideoPlayerController.networkUrl(Uri.parse(value));
 }
 
 class _ImageResultTile extends StatelessWidget {
@@ -1402,28 +1959,13 @@ class _TaskImagePreviewCard extends StatelessWidget {
         attachments: previewAttachments,
       ),
       child: SizedBox(
-        width: 112,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: AttachmentThumb(
-                attachment: previewAttachment,
-                width: 112,
-                height: 84,
-                radius: 18,
-                overlayLabel: item.label,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              item.source,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
+        width: 96,
+        child: AttachmentThumb(
+          attachment: previewAttachment,
+          width: 96,
+          height: 76,
+          radius: 14,
+          overlayLabel: '',
         ),
       ),
     );
@@ -1442,7 +1984,7 @@ class _ImageTaskActionBar extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (task.status != TaskStatus.success) ...[
+        if (!task.isArchived && task.status != TaskStatus.success) ...[
           _PrimaryTaskButton(task: task),
           const SizedBox(width: 8),
         ],
@@ -1477,24 +2019,32 @@ class _ImageTaskActionBar extends StatelessWidget {
                   await helper._copyTaskId(context, task.id);
                 case 'delete':
                   await helper._confirmDeleteTask(context, state, task);
+                case 'archive':
+                  await helper._confirmArchiveTask(context, state, task);
               }
             },
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'detail', child: Text('查看详情')),
-              const PopupMenuItem(value: 'refresh', child: Text('手动刷新')),
+              if (!task.isArchived)
+                const PopupMenuItem(value: 'refresh', child: Text('手动刷新')),
               const PopupMenuItem(value: 'copy', child: Text('复制到图片创作')),
-              if (task.status == TaskStatus.failure)
+              if (!task.isArchived && task.status == TaskStatus.failure)
                 const PopupMenuItem(value: 'retry', child: Text('重新生成')),
-              if (task.imageResults.any(
-                (r) =>
-                    r.status == ImageResultStatus.downloadFailed ||
-                    r.status == ImageResultStatus.uploadFailed,
-              ))
+              if (!task.isArchived &&
+                  task.imageResults.any(
+                    (r) =>
+                        r.status == ImageResultStatus.downloadFailed ||
+                        r.status == ImageResultStatus.uploadFailed,
+                  ))
                 const PopupMenuItem(
                   value: 'retryFailedTransfers',
                   child: Text('重试失败项'),
                 ),
               const PopupMenuItem(value: 'copy_id', child: Text('复制任务号')),
+              PopupMenuItem(
+                value: 'archive',
+                child: Text(task.isArchived ? '恢复任务' : '归档任务'),
+              ),
               const PopupMenuItem(value: 'delete', child: Text('删除任务')),
             ],
             child: const SizedBox(

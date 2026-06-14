@@ -11,13 +11,26 @@ import 'image_create_page.dart';
 import 'video_frame_capture_page.dart';
 import '../widgets/attachment_media.dart';
 
-class LibraryPage extends StatelessWidget {
+class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});
 
   @override
+  State<LibraryPage> createState() => _LibraryPageState();
+}
+
+class _LibraryPageState extends State<LibraryPage> {
+  final Set<String> _selectedAttachmentIds = {};
+
+  @override
   Widget build(BuildContext context) {
-    final state = AppScope.of(context);
-    final visibleAttachments = state.visibleLibrary;
+    final appState = AppScope.of(context);
+    final visibleAttachments = appState.visibleLibrary;
+    final isCompactMode = appState.libraryViewMode == LibraryViewMode.compact;
+    if (!isCompactMode && _selectedAttachmentIds.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(_selectedAttachmentIds.clear);
+      });
+    }
 
     return AppPageScaffold(
       eyebrow: 'Library',
@@ -30,7 +43,7 @@ class LibraryPage extends StatelessWidget {
             sliver: SliverList.list(
               children: [
                 const SectionLabel('搜索与筛选'),
-                _LibraryFilterPanel(state: state),
+                _LibraryFilterPanel(state: appState),
                 const SizedBox(height: 16),
                 const SectionLabel('快速操作'),
                 UtilityPanel(
@@ -45,7 +58,7 @@ class LibraryPage extends StatelessWidget {
                             label: '打开相册',
                             icon: Icons.photo_library_outlined,
                             emphasized: true,
-                            onPressed: () => _pickFiles(context, state),
+                            onPressed: () => _pickFiles(context, appState),
                           ),
                           CapsuleButton(
                             label: 'AI 生图',
@@ -63,7 +76,7 @@ class LibraryPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        '共 ${state.library.length} 个素材，当前命中 ${visibleAttachments.length} 个。',
+                        '共 ${appState.library.length} 个素材，当前命中 ${visibleAttachments.length} 个。',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -71,10 +84,47 @@ class LibraryPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 const SectionLabel('素材列表'),
-                if (state.uploadErrorMessage != null) ...[
+                _LibraryViewToolbar(
+                  mode: appState.libraryViewMode,
+                  selectedCount: _selectedAttachmentIds.length,
+                  visibleCount: visibleAttachments.length,
+                  onModeChanged: (mode) {
+                    appState.setLibraryViewMode(mode);
+                    if (mode != LibraryViewMode.compact) {
+                      setState(_selectedAttachmentIds.clear);
+                    }
+                  },
+                  onSelectAll: isCompactMode
+                      ? () {
+                          setState(() {
+                            final visibleIds = visibleAttachments
+                                .map((item) => item.id)
+                                .toSet();
+                            if (_selectedAttachmentIds.length ==
+                                visibleIds.length) {
+                              _selectedAttachmentIds.clear();
+                            } else {
+                              _selectedAttachmentIds
+                                ..clear()
+                                ..addAll(visibleIds);
+                            }
+                          });
+                        }
+                      : null,
+                  onDeleteSelected:
+                      isCompactMode && _selectedAttachmentIds.isNotEmpty
+                      ? () => _deleteSelectedAttachments(
+                          context,
+                          appState,
+                          visibleAttachments,
+                        )
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                if (appState.uploadErrorMessage != null) ...[
                   UtilityPanel(
                     child: Text(
-                      state.uploadErrorMessage!,
+                      appState.uploadErrorMessage!,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.error,
                       ),
@@ -89,7 +139,7 @@ class LibraryPage extends StatelessWidget {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
               sliver: SliverToBoxAdapter(
-                child: _LibraryEmptyState(state: state),
+                child: _LibraryEmptyState(state: appState),
               ),
             )
           else
@@ -97,16 +147,74 @@ class LibraryPage extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
               sliver: SliverList.separated(
                 itemCount: visibleAttachments.length,
-                itemBuilder: (context, index) => _AttachmentCard(
-                  attachment: visibleAttachments[index],
-                  previewAttachments: visibleAttachments,
-                ),
-                separatorBuilder: (_, _) => const SizedBox(height: 16),
+                itemBuilder: (context, index) {
+                  final attachment = visibleAttachments[index];
+                  if (isCompactMode) {
+                    return _CompactAttachmentRow(
+                      attachment: attachment,
+                      previewAttachments: visibleAttachments,
+                      selected: _selectedAttachmentIds.contains(attachment.id),
+                      onSelectedChanged: (selected) {
+                        setState(() {
+                          if (selected) {
+                            _selectedAttachmentIds.add(attachment.id);
+                          } else {
+                            _selectedAttachmentIds.remove(attachment.id);
+                          }
+                        });
+                      },
+                    );
+                  }
+                  return _AttachmentCard(
+                    attachment: attachment,
+                    previewAttachments: visibleAttachments,
+                  );
+                },
+                separatorBuilder: (_, _) =>
+                    SizedBox(height: isCompactMode ? 8 : 16),
               ),
             ),
         ],
       ),
     );
+  }
+
+  Future<void> _deleteSelectedAttachments(
+    BuildContext context,
+    AppState appState,
+    List<Attachment> visibleAttachments,
+  ) async {
+    final selected = visibleAttachments
+        .where((item) => _selectedAttachmentIds.contains(item.id))
+        .toList();
+    if (selected.isEmpty) return;
+    final decision = await showModalBottomSheet<_DeleteAttachmentDecision>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (_) => _BatchDeleteAttachmentSheet(attachments: selected),
+    );
+    if (decision?.confirmed != true) return;
+    final result = await appState.deleteAttachments(
+      selected.map((item) => item.id),
+      deleteRemote: decision!.deleteRemoteFile,
+    );
+    if (!context.mounted) return;
+    setState(() {
+      _selectedAttachmentIds.removeAll(selected.map((item) => item.id));
+    });
+    final failedCount = result.failures.length;
+    final message = failedCount == 0
+        ? '已删除 ${result.deletedCount} 个素材'
+        : '已删除 ${result.deletedCount} 个素材，$failedCount 个失败';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -253,6 +361,166 @@ class _LibraryFilterPanelState extends State<_LibraryFilterPanel> {
                 ? CrossFadeState.showSecond
                 : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 180),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LibraryViewToolbar extends StatelessWidget {
+  const _LibraryViewToolbar({
+    required this.mode,
+    required this.selectedCount,
+    required this.visibleCount,
+    required this.onModeChanged,
+    required this.onSelectAll,
+    required this.onDeleteSelected,
+  });
+
+  final LibraryViewMode mode;
+  final int selectedCount;
+  final int visibleCount;
+  final ValueChanged<LibraryViewMode> onModeChanged;
+  final VoidCallback? onSelectAll;
+  final VoidCallback? onDeleteSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return UtilityPanel(
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SegmentedButton<LibraryViewMode>(
+            segments: const [
+              ButtonSegment<LibraryViewMode>(
+                value: LibraryViewMode.comfortable,
+                icon: Icon(Icons.view_agenda_outlined, size: 18),
+                label: Text('普通'),
+              ),
+              ButtonSegment<LibraryViewMode>(
+                value: LibraryViewMode.compact,
+                icon: Icon(Icons.format_list_bulleted_rounded, size: 18),
+                label: Text('精简'),
+              ),
+            ],
+            selected: {mode},
+            emptySelectionAllowed: false,
+            onSelectionChanged: (selected) => onModeChanged(selected.first),
+          ),
+          if (mode == LibraryViewMode.compact) ...[
+            OutlinedButton.icon(
+              onPressed: visibleCount == 0 ? null : onSelectAll,
+              icon: const Icon(Icons.select_all_rounded, size: 18),
+              label: Text(
+                selectedCount == visibleCount && visibleCount > 0
+                    ? '取消全选'
+                    : '全选',
+              ),
+            ),
+            FilledButton.icon(
+              onPressed: onDeleteSelected,
+              icon: const Icon(Icons.delete_outline_rounded, size: 18),
+              label: Text(selectedCount == 0 ? '删除' : '删除 $selectedCount'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactAttachmentRow extends StatelessWidget {
+  const _CompactAttachmentRow({
+    required this.attachment,
+    required this.previewAttachments,
+    required this.selected,
+    required this.onSelectedChanged,
+  });
+
+  final Attachment attachment;
+  final List<Attachment> previewAttachments;
+  final bool selected;
+  final ValueChanged<bool> onSelectedChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final canAccess = state.canAccessAttachment(attachment);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return UtilityPanel(
+      padding: const EdgeInsets.all(10),
+      child: Row(
+        children: [
+          Checkbox(
+            value: selected,
+            onChanged: (value) => onSelectedChanged(value ?? false),
+          ),
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: canAccess
+                ? () => showAttachmentPreviewSheet(
+                    context,
+                    attachment,
+                    attachments: previewAttachments,
+                  )
+                : null,
+            child: AttachmentThumb(
+              attachment: attachment,
+              width: 64,
+              height: 64,
+              radius: 10,
+              overlayLabel: attachment.label,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  attachment.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  attachment.fileName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    Text(
+                      displayCategoryLabel(attachment.category),
+                      style: theme.textTheme.labelSmall,
+                    ),
+                    Text(
+                      state.storageProviderLabel(attachment.storageProvider),
+                      style: theme.textTheme.labelSmall,
+                    ),
+                    Text(
+                      _formatFileSize(attachment.fileSizeBytes),
+                      style: theme.textTheme.labelSmall,
+                    ),
+                    Text(
+                      _formatCompactDateTime(attachment.createdAt),
+                      style: theme.textTheme.labelSmall,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -485,6 +753,186 @@ class _DeleteAttachmentSheet extends StatefulWidget {
   State<_DeleteAttachmentSheet> createState() => _DeleteAttachmentSheetState();
 }
 
+class _BatchDeleteAttachmentSheet extends StatefulWidget {
+  const _BatchDeleteAttachmentSheet({required this.attachments});
+
+  final List<Attachment> attachments;
+
+  @override
+  State<_BatchDeleteAttachmentSheet> createState() =>
+      _BatchDeleteAttachmentSheetState();
+}
+
+class _BatchDeleteAttachmentSheetState
+    extends State<_BatchDeleteAttachmentSheet> {
+  bool _deleteRemoteFile = false;
+
+  int get _remoteDeletableCount => widget.attachments
+      .where((item) => item.objectKey?.trim().isNotEmpty == true)
+      .length;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final providerCounts = <StorageProvider, int>{};
+    for (final attachment in widget.attachments) {
+      providerCounts.update(
+        attachment.storageProvider,
+        (value) => value + 1,
+        ifAbsent: () => 1,
+      );
+    }
+    final missingObjectKeyCount =
+        widget.attachments.length - _remoteDeletableCount;
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: UtilityPanel(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: colorScheme.errorContainer,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      Icons.delete_sweep_rounded,
+                      color: colorScheme.error,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('批量删除素材', style: theme.textTheme.titleLarge),
+                        const SizedBox(height: 4),
+                        Text(
+                          '将删除 ${widget.attachments.length} 个素材记录。删除后引用会失效。',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.6,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ...providerCounts.entries.map(
+                      (entry) => Text(
+                        '${_storageProviderLabel(entry.key)}: ${entry.value} 个',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ),
+                    if (missingObjectKeyCount > 0) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        '$missingObjectKeyCount 个素材缺少对象 Key，只能删除本地记录。',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Container(
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.55),
+                  ),
+                ),
+                child: CheckboxListTile(
+                  value: _remoteDeletableCount > 0 && _deleteRemoteFile,
+                  onChanged: _remoteDeletableCount > 0
+                      ? (value) =>
+                            setState(() => _deleteRemoteFile = value ?? false)
+                      : null,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text('同时删除云端文件'),
+                  subtitle: Text(
+                    _remoteDeletableCount > 0
+                        ? '会按每个素材记录的云服务删除 $_remoteDeletableCount 个云端对象。'
+                        : '所选素材没有可用对象 Key，只能删除本地记录。',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(
+                        const _DeleteAttachmentDecision(
+                          confirmed: false,
+                          deleteRemoteFile: false,
+                        ),
+                      ),
+                      child: const Text('取消'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).pop(
+                        _DeleteAttachmentDecision(
+                          confirmed: true,
+                          deleteRemoteFile:
+                              _remoteDeletableCount > 0 && _deleteRemoteFile,
+                        ),
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: colorScheme.error,
+                        foregroundColor: colorScheme.onError,
+                      ),
+                      child: Text(
+                        _remoteDeletableCount > 0 && _deleteRemoteFile
+                            ? '删除素材和云端文件'
+                            : '仅删除素材',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _DeleteAttachmentSheetState extends State<_DeleteAttachmentSheet> {
   bool _deleteRemoteFile = false;
 
@@ -667,6 +1115,7 @@ class _AttachmentCardState extends State<_AttachmentCard> {
   late final TextEditingController _labelController;
   late final FocusNode _labelFocusNode;
   bool _isEditingLabel = false;
+  bool _showTagEditor = false;
 
   @override
   void initState() {
@@ -733,74 +1182,21 @@ class _AttachmentCardState extends State<_AttachmentCard> {
     final attachment = widget.attachment;
     final canAccess = state.canAccessAttachment(attachment);
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final metaTextStyle = theme.textTheme.bodySmall?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
+      color: colorScheme.onSurfaceVariant,
     );
 
     return UtilityPanel(
+      padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isCompact = constraints.maxWidth < 420;
-              final infoColumn = Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_isEditingLabel)
-                    TextField(
-                      controller: _labelController,
-                      focusNode: _labelFocusNode,
-                      decoration: const InputDecoration(
-                        labelText: '素材名',
-                        isDense: true,
-                      ),
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) {
-                        _saveLabel();
-                        setState(() {
-                          _isEditingLabel = false;
-                        });
-                      },
-                      onTapOutside: (_) => _saveLabel(),
-                    )
-                  else
-                    _AttachmentLabelDisplay(
-                      label: attachment.label,
-                      onTap: _startEditingLabel,
-                    ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _AttachmentMetaBadge(
-                        icon: Icons.folder_open_rounded,
-                        label: displayCategoryLabel(attachment.category),
-                      ),
-                      _AttachmentMetaBadge(
-                        icon: Icons.schedule_rounded,
-                        label: _formatCompactDateTime(attachment.createdAt),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  _AttachmentMetaLine(
-                    label: '文件名',
-                    value: attachment.fileName,
-                    style: metaTextStyle,
-                  ),
-                  const SizedBox(height: 4),
-                  _AttachmentMetaLine(
-                    label: '添加时间',
-                    value: formatDateTime(attachment.createdAt),
-                    style: metaTextStyle,
-                  ),
-                ],
-              );
-
-              final thumb = InkWell(
-                borderRadius: BorderRadius.circular(18),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              InkWell(
+                borderRadius: BorderRadius.circular(14),
                 onTap: canAccess
                     ? () => showAttachmentPreviewSheet(
                         context,
@@ -810,29 +1206,86 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                     : null,
                 child: AttachmentThumb(
                   attachment: attachment,
-                  width: isCompact ? constraints.maxWidth : 104,
-                  height: isCompact ? 176 : 84,
-                  radius: 18,
-                  overlayLabel: attachment.label,
+                  width: 76,
+                  height: 76,
+                  radius: 14,
+                  overlayLabel: attachment.kind == AttachmentKind.image
+                      ? ''
+                      : attachment.label,
                 ),
-              );
-
-              if (isCompact) {
-                return Column(
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [thumb, const SizedBox(height: 12), infoColumn],
-                );
-              }
-
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  thumb,
-                  const SizedBox(width: 12),
-                  Expanded(child: infoColumn),
-                ],
-              );
-            },
+                  children: [
+                    if (_isEditingLabel)
+                      TextField(
+                        controller: _labelController,
+                        focusNode: _labelFocusNode,
+                        decoration: const InputDecoration(
+                          labelText: '素材名',
+                          isDense: true,
+                        ),
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) {
+                          _saveLabel();
+                          setState(() {
+                            _isEditingLabel = false;
+                          });
+                        },
+                        onTapOutside: (_) => _saveLabel(),
+                      )
+                    else
+                      _AttachmentLabelDisplay(
+                        label: attachment.label,
+                        onTap: _startEditingLabel,
+                      ),
+                    const SizedBox(height: 4),
+                    Text(
+                      [
+                        compactFileName(attachment.fileName),
+                        _formatCompactDateTime(attachment.createdAt),
+                      ].join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: metaTextStyle,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      [
+                        displayCategoryLabel(attachment.category),
+                        _roleLabel(attachment.role),
+                        state.storageProviderLabel(attachment.storageProvider),
+                        _formatFileSize(attachment.fileSizeBytes),
+                      ].join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: metaTextStyle,
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        StatusPill(
+                          label: _statusLabel(attachment.status),
+                          tone: _statusColor(context, attachment.status),
+                        ),
+                        if (attachment.kind == AttachmentKind.video)
+                          StatusPill(
+                            label: _localStatusLabel(attachment),
+                            tone: _localStatusColor(context, attachment),
+                            busy:
+                                attachment.localStatus ==
+                                AttachmentLocalStatus.downloading,
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -869,6 +1322,14 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                     ? () => _deleteAttachment(context, state, attachment)
                     : null,
               ),
+              _AttachmentActionButton(
+                icon: _showTagEditor
+                    ? Icons.keyboard_arrow_up_rounded
+                    : Icons.sell_outlined,
+                label: _showTagEditor ? '收起' : '标签',
+                onPressed: () =>
+                    setState(() => _showTagEditor = !_showTagEditor),
+              ),
               _AttachmentOverflowButton(
                 enabled: canAccess,
                 itemBuilder: (context) => [
@@ -899,81 +1360,93 @@ class _AttachmentCardState extends State<_AttachmentCard> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              StatusPill(
-                label: _statusLabel(attachment.status),
-                tone: _statusColor(context, attachment.status),
-              ),
-              if (attachment.kind == AttachmentKind.video)
-                StatusPill(
-                  label: _localStatusLabel(attachment),
-                  tone: _localStatusColor(context, attachment),
-                  busy:
-                      attachment.localStatus ==
-                      AttachmentLocalStatus.downloading,
-                ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text('素材角色', style: Theme.of(context).textTheme.labelMedium),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _rolesForKind(attachment.kind)
-                .map(
-                  (role) => FilterChip(
-                    label: Text(_roleLabel(role)),
-                    selected: attachment.role == role,
-                    showCheckmark: false,
-                    onSelected: (_) =>
-                        state.updateAttachmentRole(attachment.id, role),
+          AnimatedCrossFade(
+            firstChild: const SizedBox.shrink(),
+            secondChild: Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.35,
                   ),
-                )
-                .toList(),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '分类标签',
-                  style: Theme.of(context).textTheme.labelMedium,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('素材角色', style: theme.textTheme.labelMedium),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _rolesForKind(attachment.kind)
+                            .map(
+                              (role) => FilterChip(
+                                label: Text(_roleLabel(role)),
+                                selected: attachment.role == role,
+                                showCheckmark: false,
+                                onSelected: (_) => state.updateAttachmentRole(
+                                  attachment.id,
+                                  role,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '分类标签',
+                              style: theme.textTheme.labelMedium,
+                            ),
+                          ),
+                          ToolIconButton(
+                            icon: Icons.tune_rounded,
+                            tooltip: '管理分类',
+                            onPressed: () => _openCategoryManagement(context),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          FilterChip(
+                            label: const Text(uncategorizedCategoryLabel),
+                            selected: attachment.category.trim().isEmpty,
+                            showCheckmark: false,
+                            onSelected: (_) => state.updateAttachmentCategory(
+                              attachment.id,
+                              '',
+                            ),
+                          ),
+                          ...state.categories.map(
+                            (category) => FilterChip(
+                              label: Text(category),
+                              selected: attachment.category == category,
+                              showCheckmark: false,
+                              onSelected: (_) => state.updateAttachmentCategory(
+                                attachment.id,
+                                category,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              ToolIconButton(
-                icon: Icons.tune_rounded,
-                tooltip: '管理分类',
-                onPressed: () => _openCategoryManagement(context),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilterChip(
-                label: const Text(uncategorizedCategoryLabel),
-                selected: attachment.category.trim().isEmpty,
-                showCheckmark: false,
-                onSelected: (_) =>
-                    state.updateAttachmentCategory(attachment.id, ''),
-              ),
-              ...state.categories.map(
-                (category) => FilterChip(
-                  label: Text(category),
-                  selected: attachment.category == category,
-                  showCheckmark: false,
-                  onSelected: (_) =>
-                      state.updateAttachmentCategory(attachment.id, category),
-                ),
-              ),
-            ],
+            ),
+            crossFadeState: _showTagEditor
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 180),
           ),
         ],
       ),
@@ -1070,35 +1543,25 @@ String _formatCompactDateTime(DateTime value) {
   return '${two(value.month)}-${two(value.day)} ${two(value.hour)}:${two(value.minute)}';
 }
 
-class _AttachmentMetaBadge extends StatelessWidget {
-  const _AttachmentMetaBadge({required this.icon, required this.label});
+String _formatFileSize(int? bytes) {
+  if (bytes == null || bytes < 0) return '大小未知';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  var value = bytes.toDouble();
+  var unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+  if (unitIndex == 0) return '${value.round()} ${units[unitIndex]}';
+  return '${value.toStringAsFixed(value >= 10 ? 1 : 2)} ${units[unitIndex]}';
+}
 
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: colorScheme.onSurfaceVariant),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
+String _storageProviderLabel(StorageProvider provider) {
+  switch (provider) {
+    case StorageProvider.qiniu:
+      return '七牛云';
+    case StorageProvider.bitifulS4:
+      return '缤纷云（Bitiful）S4';
   }
 }
 
@@ -1134,36 +1597,6 @@ class _AttachmentLabelDisplay extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _AttachmentMetaLine extends StatelessWidget {
-  const _AttachmentMetaLine({
-    required this.label,
-    required this.value,
-    required this.style,
-  });
-
-  final String label;
-  final String value;
-  final TextStyle? style;
-
-  @override
-  Widget build(BuildContext context) {
-    return RichText(
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-      text: TextSpan(
-        style: style,
-        children: [
-          TextSpan(
-            text: '$label: ',
-            style: style?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          TextSpan(text: value),
-        ],
       ),
     );
   }
@@ -1256,10 +1689,7 @@ class _AttachmentOverflowButton extends StatelessWidget {
 }
 
 class _AttachmentMenuRow extends StatelessWidget {
-  const _AttachmentMenuRow({
-    required this.icon,
-    required this.label,
-  });
+  const _AttachmentMenuRow({required this.icon, required this.label});
 
   final IconData icon;
   final String label;

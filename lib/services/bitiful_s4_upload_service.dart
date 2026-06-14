@@ -49,6 +49,7 @@ class BitifulS4UploadService {
       storageBucket: config.bucket,
       storageEndpoint: config.endpoint,
       storageRegion: config.region,
+      fileSizeBytes: file.bytes.length,
     );
   }
 
