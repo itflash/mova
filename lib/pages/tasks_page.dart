@@ -134,6 +134,16 @@ class TasksPage extends StatelessWidget {
     _showToast(context, retried ? '已重新提交任务' : '重新提交失败');
   }
 
+  Future<void> _addTaskVideoToComposition(
+    BuildContext context,
+    AppState state,
+    TaskRecord task,
+  ) async {
+    final added = await state.addTaskVideoToComposition(task.id);
+    if (!context.mounted) return;
+    _showToast(context, added ? '已添加到剪辑' : '添加失败');
+  }
+
   Future<void> _confirmDeleteTask(
     BuildContext context,
     AppState state,
@@ -1005,11 +1015,23 @@ class _TaskActionBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final helper = const TasksPage();
+    final hasVideoResult =
+        task.videoUrl?.trim().isNotEmpty == true ||
+        task.localResourceUri?.trim().isNotEmpty == true;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         if (!task.isArchived && task.status != TaskStatus.success) ...[
           _PrimaryTaskButton(task: task),
+          const SizedBox(width: 8),
+        ],
+        if (task.kind == TaskKind.video && hasVideoResult) ...[
+          ToolIconButton(
+            tooltip: '添加到剪辑',
+            icon: Icons.content_cut_rounded,
+            onPressed: () =>
+                helper._addTaskVideoToComposition(context, state, task),
+          ),
           const SizedBox(width: 8),
         ],
         _TaskLogButton(task: task),

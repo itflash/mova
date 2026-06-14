@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../app/app_scope.dart';
 import '../app/models.dart';
+import 'composition_page.dart';
 import 'create_page.dart';
 import 'library_page.dart';
 import 'settings_page.dart';
@@ -17,6 +18,7 @@ class HomeShell extends StatelessWidget {
     final pages = <AppTab, Widget>{
       AppTab.create: const CreatePage(),
       AppTab.library: const LibraryPage(),
+      AppTab.composition: const CompositionPage(),
       AppTab.tasks: const TasksPage(),
       AppTab.settings: const SettingsPage(),
     };
@@ -716,6 +718,11 @@ class _BottomDock extends StatelessWidget {
             icon: Icon(Icons.photo_library_outlined),
             selectedIcon: Icon(Icons.photo_library),
             label: '素材',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.content_cut_outlined),
+            selectedIcon: Icon(Icons.content_cut),
+            label: '剪辑',
           ),
           NavigationDestination(
             icon: Icon(Icons.video_collection_outlined),

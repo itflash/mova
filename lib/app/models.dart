@@ -1,4 +1,4 @@
-enum AppTab { create, library, tasks, settings }
+enum AppTab { create, library, composition, tasks, settings }
 
 enum ModeId { text, firstFrame, firstLast, reference }
 

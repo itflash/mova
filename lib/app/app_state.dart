@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 
+import 'composition_models.dart';
 import 'mock_data.dart';
 import 'models.dart';
 import '../services/app_storage.dart';
@@ -16,6 +17,7 @@ import '../services/seedance_service.dart';
 import '../services/image_generation_service.dart';
 import '../services/storage_upload_result.dart';
 import '../services/video_frame_service.dart';
+import '../services/video_composition_service.dart';
 
 class AppState extends ChangeNotifier {
   static final RegExp promptTokenPattern = RegExp(r'@\{[^}]+\}');
@@ -26,6 +28,7 @@ class AppState extends ChangeNotifier {
   final AppStorage _storage;
   final ImageGenerationService _imageGenerationService;
   final VideoFrameService _videoFrameService;
+  final VideoCompositionService _videoCompositionService;
   static const MethodChannel _mediaChannel = MethodChannel('mova/media');
   Timer? _persistDebounce;
   Timer? _pollingTimer;
@@ -34,6 +37,7 @@ class AppState extends ChangeNotifier {
   final Set<String> _refreshingTaskIds = {};
   final Set<String> _transferringImageTaskIds = {};
   final Map<String, _SignedUrlCacheEntry> _signedUrlCache = {};
+  int _compositionClipSequence = 0;
 
   AppState({
     SeedanceService? seedanceService,
@@ -43,6 +47,7 @@ class AppState extends ChangeNotifier {
     AppStorage? storage,
     ImageGenerationService? imageGenerationService,
     VideoFrameService? videoFrameService,
+    VideoCompositionService? videoCompositionService,
   }) : _seedanceService = seedanceService ?? SeedanceService(),
        _filePicker = filePicker ?? NativeFilePicker(),
        _qiniuUploadService = qiniuUploadService ?? QiniuUploadService(),
@@ -50,7 +55,9 @@ class AppState extends ChangeNotifier {
        _storage = storage ?? AppStorage(),
        _imageGenerationService =
            imageGenerationService ?? ImageGenerationService(),
-       _videoFrameService = videoFrameService ?? VideoFrameService() {
+       _videoFrameService = videoFrameService ?? VideoFrameService(),
+       _videoCompositionService =
+           videoCompositionService ?? VideoCompositionService() {
     _initializeToolResolutions();
     addListener(_schedulePersist);
   }
@@ -102,6 +109,21 @@ class AppState extends ChangeNotifier {
   String? imageSubmitErrorMessage;
   TaskTab activeTaskTab = TaskTab.video;
   bool showArchivedTasks = false;
+  VideoCompositionProject compositionProject = VideoCompositionProject.empty;
+  CompositionExportStatus compositionExportStatus =
+      CompositionExportStatus.idle;
+  int compositionExportProgress = 0;
+  String compositionExportStage = '';
+  String? compositionExportErrorMessage;
+  CompositionExportResult? compositionExportResult;
+
+  bool get isExportingComposition => switch (compositionExportStatus) {
+    CompositionExportStatus.preparing ||
+    CompositionExportStatus.trimming ||
+    CompositionExportStatus.composing ||
+    CompositionExportStatus.writing => true,
+    _ => false,
+  };
 
   void setActiveTaskTab(TaskTab tab) {
     activeTaskTab = tab;
@@ -537,6 +559,173 @@ class AppState extends ChangeNotifier {
     if (currentTab == tab) return;
     currentTab = tab;
     notifyListeners();
+  }
+
+  void resetCompositionProject() {
+    compositionProject = VideoCompositionProject.empty;
+    compositionExportErrorMessage = null;
+    compositionExportResult = null;
+    notifyListeners();
+  }
+
+  String _newCompositionClipId() {
+    final sequence = _compositionClipSequence++;
+    return 'composition-clip-${DateTime.now().microsecondsSinceEpoch}-$sequence';
+  }
+
+  void addCompositionClip(CompositionClip clip) {
+    compositionProject = compositionProject.copyWith(
+      clips: [...compositionProject.clips, clip],
+    );
+    compositionExportErrorMessage = null;
+    notifyListeners();
+  }
+
+  void updateCompositionClip(
+    String clipId,
+    CompositionClip Function(CompositionClip clip) update,
+  ) {
+    var changed = false;
+    final clips = compositionProject.clips.map((clip) {
+      if (clip.id != clipId) return clip;
+      changed = true;
+      return update(clip);
+    }).toList();
+    if (!changed) return;
+    compositionProject = compositionProject.copyWith(clips: clips);
+    compositionExportErrorMessage = null;
+    notifyListeners();
+  }
+
+  void removeCompositionClip(String clipId) {
+    final clips = compositionProject.clips
+        .where((clip) => clip.id != clipId)
+        .toList();
+    if (clips.length == compositionProject.clips.length) return;
+    compositionProject = compositionProject.copyWith(clips: clips);
+    compositionExportErrorMessage = null;
+    notifyListeners();
+  }
+
+  void duplicateCompositionClip(String clipId) {
+    final index = compositionProject.clips.indexWhere(
+      (clip) => clip.id == clipId,
+    );
+    if (index == -1) return;
+    final source = compositionProject.clips[index];
+    final duplicate = source.copyWith(
+      id: _newCompositionClipId(),
+      label: '${source.label} 副本',
+    );
+    final clips = [...compositionProject.clips]..insert(index + 1, duplicate);
+    compositionProject = compositionProject.copyWith(clips: clips);
+    compositionExportErrorMessage = null;
+    notifyListeners();
+  }
+
+  void moveCompositionClip(String clipId, int delta) {
+    if (delta == 0) return;
+    final clips = [...compositionProject.clips];
+    final currentIndex = clips.indexWhere((clip) => clip.id == clipId);
+    if (currentIndex == -1) return;
+    final targetIndex = (currentIndex + delta).clamp(0, clips.length - 1);
+    if (targetIndex == currentIndex) return;
+    final clip = clips.removeAt(currentIndex);
+    clips.insert(targetIndex, clip);
+    compositionProject = compositionProject.copyWith(clips: clips);
+    compositionExportErrorMessage = null;
+    notifyListeners();
+  }
+
+  void updateCompositionOutput(CompositionOutputSettings output) {
+    compositionProject = compositionProject.copyWith(output: output);
+    compositionExportErrorMessage = null;
+    notifyListeners();
+  }
+
+  void updateCompositionAudio(CompositionAudioSettings audio) {
+    compositionProject = compositionProject.copyWith(audio: audio);
+    compositionExportErrorMessage = null;
+    notifyListeners();
+  }
+
+  Future<bool> exportComposition() async {
+    if (isExportingComposition) return false;
+
+    final messages = compositionProject.validationMessages;
+    if (messages.isNotEmpty) {
+      compositionExportErrorMessage = messages.first;
+      notifyListeners();
+      return false;
+    }
+
+    compositionExportStatus = CompositionExportStatus.preparing;
+    compositionExportProgress = 0;
+    compositionExportStage = '准备素材';
+    compositionExportErrorMessage = null;
+    compositionExportResult = null;
+    notifyListeners();
+
+    try {
+      final result = await _videoCompositionService.export(compositionProject);
+      compositionExportStatus = CompositionExportStatus.success;
+      compositionExportProgress = 100;
+      compositionExportStage = '导出完成';
+      compositionExportResult = result;
+      notifyListeners();
+      return true;
+    } on Exception catch (error) {
+      compositionExportStatus = CompositionExportStatus.failure;
+      compositionExportProgress = 0;
+      compositionExportStage = '导出失败';
+      compositionExportErrorMessage = _cleanError(error);
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> cancelCompositionExport() async {
+    if (!isExportingComposition) return;
+    await _videoCompositionService.cancel();
+    compositionExportStatus = CompositionExportStatus.canceled;
+    compositionExportStage = '已取消';
+    notifyListeners();
+  }
+
+  Future<void> pickAndAddLocalCompositionVideo() async {
+    final picked = await _filePicker.pickSingleVideoFile();
+    final uri = picked?.uri.trim() ?? '';
+    if (picked == null || uri.isEmpty) return;
+
+    addCompositionClip(
+      CompositionClip.local(
+        id: 'clip-${DateTime.now().millisecondsSinceEpoch}',
+        label: picked.name,
+        localUri: uri,
+        fileName: picked.name,
+        startMs: 0,
+        endMs: 15000,
+      ),
+    );
+    currentTab = AppTab.composition;
+    notifyListeners();
+  }
+
+  Future<void> pickCompositionBgm() async {
+    final picked = await _filePicker.pickSingleAudioFile();
+    final uri = picked?.uri.trim() ?? '';
+    if (picked == null || uri.isEmpty) return;
+
+    updateCompositionAudio(
+      compositionProject.audio.copyWith(
+        bgmSource: CompositionBgmSource.local(
+          id: 'bgm-${DateTime.now().millisecondsSinceEpoch}',
+          label: picked.name,
+          localUri: uri,
+          fileName: picked.name,
+        ),
+      ),
+    );
   }
 
   void setActiveMode(ModeId mode) {
@@ -2128,6 +2317,46 @@ class AppState extends ChangeNotifier {
     return tempFile;
   }
 
+  Future<String?> saveCompositionExportToGallery() async {
+    final result = compositionExportResult;
+    if (result == null) return null;
+    final saved = await _mediaChannel.invokeMapMethod<String, Object?>(
+      'saveVideoToGallery',
+      {'sourcePath': result.localPath, 'fileName': result.fileName},
+    );
+    return saved?['uri'] as String? ?? saved?['path'] as String?;
+  }
+
+  Future<String?> importCompositionExportToLibrary({String category = ''}) async {
+    final result = compositionExportResult;
+    if (result == null) return null;
+    if (!isCurrentStorageConfigured) {
+      throw StateError('请先在设置里填写完整的$currentStorageProviderLabel配置。');
+    }
+    final bytes = await File(result.localPath).readAsBytes();
+    final pickedFile = PickedNativeFile.fromBytes(
+      name: result.fileName,
+      mimeType: 'video/mp4',
+      bytes: bytes,
+    );
+    final uploadResult = await switch (settings.storageProvider) {
+      StorageProvider.qiniu => _qiniuUploadService.upload(
+        settings: settings,
+        file: pickedFile,
+      ),
+      StorageProvider.bitifulS4 => _bitifulUploadService.upload(
+        settings: settings,
+        file: pickedFile,
+      ),
+    };
+    return insertUploadedAttachment(
+      uploadResult,
+      labelOverride: result.fileName,
+      roleOverride: AttachmentRole.referenceVideo,
+      categoryOverride: category,
+    );
+  }
+
   Future<String?> saveAttachmentImageToGallery(String attachmentId) async {
     final attachment = library.cast<Attachment?>().firstWhere(
       (item) => item?.id == attachmentId,
@@ -2197,6 +2426,81 @@ class AppState extends ChangeNotifier {
 
   Future<bool> ensureTaskVideoLocal(String taskId) {
     return downloadTaskResult(taskId);
+  }
+
+  Future<bool> addAttachmentVideoToComposition(String attachmentId) async {
+    final attachment = attachmentById(attachmentId);
+    if (attachment == null || attachment.kind != AttachmentKind.video) {
+      return false;
+    }
+    final localized = await ensureAttachmentVideoLocal(attachmentId);
+    if (!localized) return false;
+
+    final refreshed = attachmentById(attachmentId);
+    final localUri = refreshed?.localResourceUri?.trim() ?? '';
+    if (refreshed == null || localUri.isEmpty) return false;
+
+    compositionProject = compositionProject.copyWith(
+      clips: [
+        ...compositionProject.clips,
+        CompositionClip(
+          id: _newCompositionClipId(),
+          sourceType: CompositionSourceType.attachment,
+          sourceId: attachmentId,
+          sourceUri: localUri,
+          label: refreshed.label.isNotEmpty
+              ? refreshed.label
+              : attachment.label,
+          fileName: refreshed.localFileName ?? attachment.fileName,
+          startMs: 0,
+          endMs: 15000,
+        ),
+      ],
+    );
+    compositionExportErrorMessage = null;
+    currentTab = AppTab.composition;
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> addTaskVideoToComposition(String taskId) async {
+    final task = tasks.cast<TaskRecord?>().firstWhere(
+      (item) => item?.id == taskId,
+      orElse: () => null,
+    );
+    if (task == null || task.kind != TaskKind.video) return false;
+
+    if (task.localResourceUri?.trim().isEmpty ?? true) {
+      final localized = await ensureTaskVideoLocal(taskId);
+      if (!localized) return false;
+    }
+
+    final refreshed = tasks.cast<TaskRecord?>().firstWhere(
+      (item) => item?.id == taskId,
+      orElse: () => null,
+    );
+    final localUri = refreshed?.localResourceUri?.trim() ?? '';
+    if (refreshed == null || localUri.isEmpty) return false;
+
+    compositionProject = compositionProject.copyWith(
+      clips: [
+        ...compositionProject.clips,
+        CompositionClip(
+          id: _newCompositionClipId(),
+          sourceType: CompositionSourceType.task,
+          sourceId: taskId,
+          sourceUri: localUri,
+          label: refreshed.localFileName ?? '任务视频',
+          fileName: refreshed.localFileName ?? 'task-video.mp4',
+          startMs: 0,
+          endMs: 15000,
+        ),
+      ],
+    );
+    compositionExportErrorMessage = null;
+    currentTab = AppTab.composition;
+    notifyListeners();
+    return true;
   }
 
   Future<bool> ensureAttachmentVideoLocal(String attachmentId) async {
@@ -3065,6 +3369,10 @@ class AppState extends ChangeNotifier {
       'domainOptions': domainOptions,
       'activeTaskTab': activeTaskTab.name,
       'showArchivedTasks': showArchivedTasks,
+      'compositionProject': _compositionProjectToJson(compositionProject),
+      'compositionExportResult': compositionExportResult == null
+          ? null
+          : _compositionExportResultToJson(compositionExportResult!),
     };
   }
 
@@ -3141,6 +3449,14 @@ class AppState extends ChangeNotifier {
       TaskTab.video,
     );
     showArchivedTasks = _boolValue(map['showArchivedTasks'], false);
+    compositionProject = _compositionProjectFromJson(map['compositionProject']);
+    compositionExportStatus = CompositionExportStatus.idle;
+    compositionExportProgress = 0;
+    compositionExportStage = '';
+    compositionExportErrorMessage = null;
+    compositionExportResult = _compositionExportResultFromJson(
+      map['compositionExportResult'],
+    );
     prompt = _normalizedVideoPromptForMode(prompt, activeMode);
   }
 
@@ -3478,6 +3794,183 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  Map<String, Object?> _compositionProjectToJson(
+    VideoCompositionProject value,
+  ) => {
+    'clips': value.clips.map(_compositionClipToJson).toList(),
+    'output': _compositionOutputToJson(value.output),
+    'audio': _compositionAudioToJson(value.audio),
+  };
+
+  VideoCompositionProject _compositionProjectFromJson(Object? value) {
+    if (value is! Map) return VideoCompositionProject.empty;
+    final map = Map<String, Object?>.from(value);
+    return VideoCompositionProject(
+      clips: _listFromJson(map['clips'], _compositionClipFromJson),
+      output: _compositionOutputFromJson(map['output']),
+      audio: _compositionAudioFromJson(map['audio']),
+    );
+  }
+
+  Map<String, Object?> _compositionClipToJson(CompositionClip value) => {
+    'id': value.id,
+    'label': value.label,
+    'sourceType': value.sourceType.name,
+    'sourceId': value.sourceId,
+    'sourceUri': value.sourceUri,
+    'fileName': value.fileName,
+    'startMs': value.startMs,
+    'endMs': value.endMs,
+    'transitionType': value.transitionType.name,
+    'transitionDurationMs': value.transitionDurationMs,
+  };
+
+  CompositionClip _compositionClipFromJson(Object? value) {
+    final map = value is Map
+        ? Map<String, Object?>.from(value)
+        : <String, Object?>{};
+    return CompositionClip(
+      id: _stringValue(
+        map['id'],
+        'composition-clip-${DateTime.now().microsecondsSinceEpoch}',
+      ),
+      label: _stringValue(map['label'], '未命名片段'),
+      sourceType: _enumValue(
+        CompositionSourceType.values,
+        map['sourceType'],
+        CompositionSourceType.localFile,
+      ),
+      sourceUri: _stringValue(map['sourceUri'], ''),
+      fileName: _stringValue(map['fileName'], ''),
+      startMs: _intValue(map['startMs'], 0),
+      endMs: _intValue(map['endMs'], 0),
+      sourceId: _nullableStringValue(map['sourceId']),
+      transitionType: _enumValue(
+        CompositionTransitionType.values,
+        map['transitionType'],
+        CompositionTransitionType.none,
+      ),
+      transitionDurationMs: _intValue(map['transitionDurationMs'], 0),
+    );
+  }
+
+  Map<String, Object?> _compositionOutputToJson(
+    CompositionOutputSettings value,
+  ) => {
+    'resolution': value.resolution,
+    'ratio': value.ratio,
+    'fps': value.fps,
+    'bitrateKbps': value.bitrateKbps,
+    'fileName': value.fileName,
+  };
+
+  CompositionOutputSettings _compositionOutputFromJson(Object? value) {
+    if (value is! Map) return CompositionOutputSettings.defaults;
+    final map = Map<String, Object?>.from(value);
+    return CompositionOutputSettings(
+      resolution: _stringValue(
+        map['resolution'],
+        CompositionOutputSettings.defaults.resolution,
+      ),
+      ratio: _stringValue(
+        map['ratio'],
+        CompositionOutputSettings.defaults.ratio,
+      ),
+      fps: _intValue(map['fps'], CompositionOutputSettings.defaults.fps),
+      bitrateKbps: _intValue(
+        map['bitrateKbps'],
+        CompositionOutputSettings.defaults.bitrateKbps,
+      ),
+      fileName: _stringValue(
+        map['fileName'],
+        CompositionOutputSettings.defaults.fileName,
+      ),
+    );
+  }
+
+  Map<String, Object?> _compositionAudioToJson(
+    CompositionAudioSettings value,
+  ) => {
+    'mode': value.mode.name,
+    'bgmSource': value.bgmSource == null
+        ? null
+        : _compositionBgmSourceToJson(value.bgmSource!),
+    'originalVolume': value.originalVolume,
+    'bgmVolume': value.bgmVolume,
+  };
+
+  CompositionAudioSettings _compositionAudioFromJson(Object? value) {
+    if (value is! Map) return CompositionAudioSettings.defaults;
+    final map = Map<String, Object?>.from(value);
+    return CompositionAudioSettings(
+      mode: _enumValue(
+        CompositionAudioMode.values,
+        map['mode'],
+        CompositionAudioMode.keepOriginal,
+      ),
+      bgmSource: _compositionBgmSourceFromJson(map['bgmSource']),
+      originalVolume: _doubleValue(
+        map['originalVolume'],
+        CompositionAudioSettings.defaults.originalVolume,
+      ),
+      bgmVolume: _doubleValue(
+        map['bgmVolume'],
+        CompositionAudioSettings.defaults.bgmVolume,
+      ),
+    );
+  }
+
+  Map<String, Object?> _compositionBgmSourceToJson(
+    CompositionBgmSource value,
+  ) => {
+    'id': value.id,
+    'label': value.label,
+    'sourceType': value.sourceType.name,
+    'sourceUri': value.sourceUri,
+    'fileName': value.fileName,
+  };
+
+  CompositionBgmSource? _compositionBgmSourceFromJson(Object? value) {
+    if (value is! Map) return null;
+    final map = Map<String, Object?>.from(value);
+    return CompositionBgmSource(
+      id: _stringValue(
+        map['id'],
+        'composition-bgm-${DateTime.now().microsecondsSinceEpoch}',
+      ),
+      label: _stringValue(map['label'], 'BGM'),
+      sourceType: _enumValue(
+        CompositionBgmSourceType.values,
+        map['sourceType'],
+        CompositionBgmSourceType.localFile,
+      ),
+      sourceUri: _stringValue(map['sourceUri'], ''),
+      fileName: _stringValue(map['fileName'], ''),
+    );
+  }
+
+  Map<String, Object?> _compositionExportResultToJson(
+    CompositionExportResult value,
+  ) => {
+    'localPath': value.localPath,
+    'fileName': value.fileName,
+    'durationMs': value.durationMs,
+    'width': value.width,
+    'height': value.height,
+  };
+
+  CompositionExportResult? _compositionExportResultFromJson(Object? value) {
+    if (value is! Map) return null;
+    final map = Map<String, Object?>.from(value);
+    return CompositionExportResult(
+      localPath: _stringValue(map['localPath'], ''),
+      fileName: _stringValue(map['fileName'], ''),
+      durationMs: _intValue(map['durationMs'], 0),
+      width: _intValue(map['width'], 0),
+      height: _intValue(map['height'], 0),
+    );
+  }
+
   Map<String, Object?> _taskToJson(TaskRecord value) => {
     'id': value.id,
     'mode': value.mode.name,
@@ -3712,6 +4205,12 @@ class AppState extends ChangeNotifier {
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : value;
   }
+
+  int _intValue(Object? value, int fallback) =>
+      value is num ? value.round() : fallback;
+
+  double _doubleValue(Object? value, double fallback) =>
+      value is num ? value.toDouble() : fallback;
 
   void _restoreVideoAttachmentStateFromTask(TaskRecord task) {
     selectedAttachmentIds.clear();

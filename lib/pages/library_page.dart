@@ -664,6 +664,18 @@ Future<void> _saveAttachmentToGallery(
   }
 }
 
+Future<void> _addAttachmentVideoToComposition(
+  BuildContext context,
+  AppState state,
+  Attachment attachment,
+) async {
+  final added = await state.addAttachmentVideoToComposition(attachment.id);
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(added ? '已添加到剪辑' : '添加失败')));
+}
+
 Future<void> _openVideoFrameCaptureFromLibrary(
   BuildContext context,
   AppState state,
@@ -1338,7 +1350,19 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                       )
                     : null,
               ),
-              if (attachment.kind == AttachmentKind.video)
+              if (attachment.kind == AttachmentKind.video) ...[
+                _AttachmentActionButton(
+                  icon: Icons.content_cut_rounded,
+                  label: '添加到剪辑',
+                  tooltip: '添加到剪辑',
+                  onPressed: canAccess
+                      ? () => _addAttachmentVideoToComposition(
+                          context,
+                          state,
+                          attachment,
+                        )
+                      : null,
+                ),
                 _AttachmentActionButton(
                   icon: Icons.movie_creation_outlined,
                   label: '截帧',
@@ -1350,6 +1374,7 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                         )
                       : null,
                 ),
+              ],
               _AttachmentActionButton(
                 icon: Icons.delete_outline_rounded,
                 label: '删除',
@@ -1679,11 +1704,13 @@ class _AttachmentActionButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onPressed,
+    this.tooltip,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onPressed;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
@@ -1691,7 +1718,7 @@ class _AttachmentActionButton extends StatelessWidget {
     final foreground = colorScheme.onSurface;
     final background = colorScheme.surfaceContainerHighest;
 
-    return TextButton.icon(
+    final button = TextButton.icon(
       onPressed: onPressed,
       style: TextButton.styleFrom(
         backgroundColor: background,
@@ -1704,6 +1731,8 @@ class _AttachmentActionButton extends StatelessWidget {
       icon: Icon(icon, size: 18),
       label: Text(label),
     );
+
+    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
 }
 

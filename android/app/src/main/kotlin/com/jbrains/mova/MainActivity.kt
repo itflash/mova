@@ -36,6 +36,7 @@ class MainActivity : FlutterActivity() {
     private val storageChannelName = "mova/storage"
     private val mediaChannelName = "mova/media"
     private val videoFramesChannelName = "mova/video_frames"
+    private val videoCompositionChannelName = "mova/video_composition"
     private val preferencesName = "mova_preferences"
     private val appStateKey = "app_state_json"
     private val databaseName = "mova.db"
@@ -50,6 +51,7 @@ class MainActivity : FlutterActivity() {
     private val importBackupRequestCode = 2050
     private val pickPhotoPickerRequestCode = 2051
     private val pickVideoPickerRequestCode = 2052
+    private val pickAudioPickerRequestCode = 2053
 
     private var pendingPickResult: MethodChannel.Result? = null
     private var pendingExportResult: MethodChannel.Result? = null
@@ -65,6 +67,7 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "pickMediaFiles" -> pickMediaFiles(result)
                 "pickSingleVideoFile" -> pickSingleVideoFile(result)
+                "pickSingleAudioFile" -> pickSingleAudioFile(result)
                 else -> result.notImplemented()
             }
         }
@@ -163,6 +166,63 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, videoCompositionChannelName).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "exportComposition" -> exportComposition(call.arguments, result)
+                "cancelComposition" -> result.success(true)
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun exportComposition(arguments: Any?, result: MethodChannel.Result) {
+        try {
+            val map = arguments as? Map<*, *> ?: throw IllegalArgumentException("缺少合成参数。")
+            val outputPath = map["outputPath"] as? String ?: throw IllegalArgumentException("缺少输出路径。")
+            val clips = map["clips"] as? List<*> ?: emptyList<Any>()
+            if (clips.isEmpty()) {
+                throw IllegalArgumentException("至少添加 1 个视频片段。")
+            }
+            if (clips.size > 1) {
+                result.error("export_unsupported", "多视频合成引擎正在修复中，当前版本不会再闪退。请先使用单视频导出。", null)
+                return
+            }
+            val clip = clips.first() as? Map<*, *> ?: throw IllegalArgumentException("片段参数无效。")
+            val localUri = clip["localUri"] as? String ?: throw IllegalArgumentException("缺少视频文件。")
+            val startMs = (clip["startMs"] as? Number)?.toLong() ?: 0L
+            val sourcePath = localPathFromUri(localUri)
+            if (startMs != 0L) {
+                result.error("export_unsupported", "裁剪导出引擎正在修复中，当前版本不会再闪退。请先使用完整单视频导出。", null)
+                return
+            }
+            val sourceFile = File(sourcePath)
+            if (!sourceFile.exists()) {
+                throw IllegalArgumentException("视频文件不存在。")
+            }
+            val outputFile = File(outputPath)
+            outputFile.parentFile?.mkdirs()
+            FileInputStream(sourceFile).use { input ->
+                FileOutputStream(outputFile).use { output -> input.copyTo(output) }
+            }
+            result.success(
+                mapOf(
+                    "localPath" to outputFile.absolutePath,
+                    "fileName" to outputFile.name,
+                    "durationMs" to ((clip["endMs"] as? Number)?.toInt() ?: 0),
+                    "width" to 0,
+                    "height" to 0,
+                )
+            )
+        } catch (error: Exception) {
+            result.error("export_failed", error.message ?: "视频导出失败。", null)
+        }
+    }
+
+    private fun localPathFromUri(value: String): String {
+        if (value.startsWith("file://")) {
+            return Uri.parse(value).path ?: value.removePrefix("file://")
+        }
+        return value
     }
 
     private fun readState(): String? {
@@ -257,6 +317,19 @@ class MainActivity : FlutterActivity() {
         startActivityForResult(Intent.createChooser(intent, "选择视频"), pickVideoPickerRequestCode)
     }
 
+    private fun pickSingleAudioFile(result: MethodChannel.Result) {
+        if (pendingPickResult != null) {
+            result.error("picker_busy", "文件选择器正在打开。", null)
+            return
+        }
+        pendingPickResult = result
+        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "audio/*"
+        }
+        startActivityForResult(Intent.createChooser(intent, "选择音频"), pickAudioPickerRequestCode)
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -264,6 +337,7 @@ class MainActivity : FlutterActivity() {
             pickMediaRequestCode -> handlePickMediaResult(resultCode, data)
             pickPhotoPickerRequestCode -> handlePickMediaResult(resultCode, data)
             pickVideoPickerRequestCode -> handlePickSingleVideoResult(resultCode, data)
+            pickAudioPickerRequestCode -> handlePickSingleAudioResult(resultCode, data)
             exportBackupRequestCode -> handleExportResult(resultCode, data)
             importBackupRequestCode -> handleImportResult(resultCode, data)
         }
@@ -296,6 +370,36 @@ class MainActivity : FlutterActivity() {
             )
         } catch (error: Exception) {
             result.error("pick_failed", error.message ?: "读取视频失败。", null)
+        }
+    }
+
+    private fun handlePickSingleAudioResult(resultCode: Int, data: Intent?) {
+        val result = pendingPickResult ?: return
+        pendingPickResult = null
+
+        if (resultCode != Activity.RESULT_OK || data?.data == null) {
+            result.success(null)
+            return
+        }
+
+        val uri = data.data ?: run {
+            result.success(null)
+            return
+        }
+
+        try {
+            val mimeType = contentResolver.getType(uri) ?: "audio/mpeg"
+            val localCopy = copyUriToCache(uri, displayName(uri))
+            result.success(
+                mapOf(
+                    "name" to displayName(uri),
+                    "mimeType" to mimeType,
+                    "uri" to Uri.fromFile(localCopy).toString(),
+                    "path" to localCopy.absolutePath,
+                )
+            )
+        } catch (error: Exception) {
+            result.error("pick_failed", error.message ?: "读取音频失败。", null)
         }
     }
 
@@ -481,7 +585,7 @@ class MainActivity : FlutterActivity() {
             val values = ContentValues().apply {
                 put(MediaStore.Video.Media.DISPLAY_NAME, safeFileName)
                 put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/AgentEarth")
+                put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/Mova")
                 put(MediaStore.Video.Media.IS_PENDING, 1)
             }
             val uri = contentResolver.insert(
@@ -498,7 +602,7 @@ class MainActivity : FlutterActivity() {
         } else {
             val targetDir = File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
-                "AgentEarth"
+                "Mova"
             )
             if (!targetDir.exists()) {
                 targetDir.mkdirs()
@@ -537,7 +641,7 @@ class MainActivity : FlutterActivity() {
             val values = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, safeFileName)
                 put(MediaStore.Images.Media.MIME_TYPE, resolvedMimeType)
-                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/AgentEarth")
+                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Mova")
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }
             val uri = contentResolver.insert(
@@ -554,7 +658,7 @@ class MainActivity : FlutterActivity() {
         } else {
             val targetDir = File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-                "AgentEarth"
+                "Mova"
             )
             if (!targetDir.exists()) {
                 targetDir.mkdirs()

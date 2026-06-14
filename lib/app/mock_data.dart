@@ -4,6 +4,7 @@ import '../services/api_client.dart';
 const appTabs = [
   (tab: AppTab.create, label: '创作'),
   (tab: AppTab.library, label: '素材库'),
+  (tab: AppTab.composition, label: '剪辑'),
   (tab: AppTab.tasks, label: '任务'),
   (tab: AppTab.settings, label: '设置'),
 ];

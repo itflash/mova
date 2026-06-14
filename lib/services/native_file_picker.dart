@@ -19,6 +19,14 @@ class NativeFilePicker {
     if (result == null) return null;
     return PickedLocalMediaFile.fromPlatformMap(result);
   }
+
+  Future<PickedLocalMediaFile?> pickSingleAudioFile() async {
+    final result = await _channel.invokeMapMethod<String, Object?>(
+      'pickSingleAudioFile',
+    );
+    if (result == null) return null;
+    return PickedLocalMediaFile.fromPlatformMap(result);
+  }
 }
 
 class PickedNativeFile {
