@@ -121,33 +121,62 @@ class VideoCompositionService {
 
   String _buildFilterGraph(VideoCompositionProject project) {
     final clips = project.clips;
-    final videoParts = <String>[];
-    final audioParts = <String>[];
+    final parts = <String>[];
     for (var i = 0; i < clips.length; i++) {
-      videoParts.add('[$i:v:0]setpts=PTS-STARTPTS[v$i]');
+      parts.add('[$i:v:0]setpts=PTS-STARTPTS[v$i]');
       if (project.audio.mode != CompositionAudioMode.muted &&
           project.audio.mode != CompositionAudioMode.bgmOnly) {
-        audioParts.add(
+        parts.add(
           '[$i:a:0]asetpts=PTS-STARTPTS,volume=${project.audio.originalVolume}[a$i]',
         );
       }
     }
 
-    final concatInputs = List.generate(clips.length, (index) {
+    final outputScale = _scaleFilter(project.output);
+    final hasVideoTransition = clips
+        .take(clips.length - 1)
+        .any((clip) => clip.transitionType != CompositionTransitionType.none);
+
+    if (hasVideoTransition) {
+      var currentLabel = 'v0';
+      var elapsedSeconds = clips.first.durationMs / 1000;
+      for (var i = 1; i < clips.length; i++) {
+        final previous = clips[i - 1];
+        final durationSeconds = _transitionDurationSeconds(previous);
+        final transition = _xfadeTransition(previous.transitionType);
+        final nextLabel = i == clips.length - 1 ? 'vbase' : 'vx$i';
+        final offsetSeconds = (elapsedSeconds - durationSeconds).clamp(
+          0,
+          double.infinity,
+        );
+        parts.add(
+          '[$currentLabel][v$i]xfade=transition=$transition:duration=${durationSeconds.toStringAsFixed(3)}:offset=${offsetSeconds.toStringAsFixed(3)}[$nextLabel]',
+        );
+        currentLabel = nextLabel;
+        elapsedSeconds += clips[i].durationMs / 1000 - durationSeconds;
+      }
+      parts.add('[vbase]$outputScale[vout]');
+      if (project.audio.mode != CompositionAudioMode.muted &&
+          project.audio.mode != CompositionAudioMode.bgmOnly) {
+        final audioInputs = List.generate(clips.length, (index) => '[a$index]').join();
+        parts.add('${audioInputs}concat=n=${clips.length}:v=0:a=1[abase]');
+      }
+    } else {
+      final concatInputs = List.generate(clips.length, (index) {
+        if (project.audio.mode == CompositionAudioMode.muted ||
+            project.audio.mode == CompositionAudioMode.bgmOnly) {
+          return '[v$index]';
+        }
+        return '[v$index][a$index]';
+      }).join();
       if (project.audio.mode == CompositionAudioMode.muted ||
           project.audio.mode == CompositionAudioMode.bgmOnly) {
-        return '[v$index]';
+        parts.add('${concatInputs}concat=n=${clips.length}:v=1:a=0[vbase]');
+      } else {
+        parts.add('${concatInputs}concat=n=${clips.length}:v=1:a=1[vbase][abase]');
       }
-      return '[v$index][a$index]';
-    }).join();
-
-    final concat = project.audio.mode == CompositionAudioMode.muted ||
-        project.audio.mode == CompositionAudioMode.bgmOnly
-        ? '${concatInputs}concat=n=${clips.length}:v=1:a=0[vbase]'
-        : '${concatInputs}concat=n=${clips.length}:v=1:a=1[vbase][abase]';
-
-    final outputScale = _scaleFilter(project.output);
-    final parts = <String>[...videoParts, ...audioParts, concat, '[vbase]$outputScale[vout]'];
+      parts.add('[vbase]$outputScale[vout]');
+    }
 
     switch (project.audio.mode) {
       case CompositionAudioMode.keepOriginal:
@@ -164,6 +193,22 @@ class VideoCompositionService {
     }
 
     return parts.join(';');
+  }
+
+  double _transitionDurationSeconds(CompositionClip clip) {
+    final requested = clip.transitionDurationMs > 0 ? clip.transitionDurationMs : 800;
+    final maxForClip = (clip.durationMs / 2).floor();
+    return (requested.clamp(1, maxForClip) / 1000).toDouble();
+  }
+
+  String _xfadeTransition(CompositionTransitionType type) {
+    return switch (type) {
+      CompositionTransitionType.none => 'fade',
+      CompositionTransitionType.fade => 'fade',
+      CompositionTransitionType.crossDissolve => 'fade',
+      CompositionTransitionType.black => 'fadeblack',
+      CompositionTransitionType.whiteFlash => 'fadewhite',
+    };
   }
 
   String _scaleFilter(CompositionOutputSettings output) {
