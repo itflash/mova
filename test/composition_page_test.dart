@@ -96,6 +96,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('裁剪片段'), findsOneWidget);
+    expect(find.text('开始 00:00'), findsOneWidget);
+    expect(find.text('结束 00:15'), findsOneWidget);
     expect(find.text('设为开始'), findsOneWidget);
     expect(find.text('设为结束'), findsOneWidget);
     expect(find.text('保存裁剪'), findsOneWidget);

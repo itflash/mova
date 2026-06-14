@@ -553,15 +553,15 @@ class _ClipTrimSheetState extends State<_ClipTrimSheet> {
                 '当前位置 ${_formatMs(_positionMs)} · 范围 ${_formatMs(_startMs)} - ${_formatMs(_endMs)}',
                 style: theme.textTheme.bodyMedium,
               ),
-              Slider(
-                value: _positionMs.clamp(0, _durationMs).toDouble(),
-                min: 0,
-                max: _durationMs.toDouble(),
-                label: _formatMs(_positionMs),
+              _TrimTimeline(
+                durationMs: _durationMs,
+                positionMs: _positionMs,
+                startMs: _startMs,
+                endMs: _endMs,
+                enabled: controller != null,
                 onChanged: controller == null
                     ? null
-                    : (value) async {
-                        final next = value.round();
+                    : (next) async {
                         setState(() {
                           _positionMs = next;
                         });
@@ -621,6 +621,143 @@ class _ClipTrimSheetState extends State<_ClipTrimSheet> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _TrimTimeline extends StatelessWidget {
+  const _TrimTimeline({
+    required this.durationMs,
+    required this.positionMs,
+    required this.startMs,
+    required this.endMs,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final int durationMs;
+  final int positionMs;
+  final int startMs;
+  final int endMs;
+  final bool enabled;
+  final ValueChanged<int>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final max = durationMs <= 0 ? 1 : durationMs;
+    final start = startMs.clamp(0, max).toDouble() / max;
+    final end = endMs.clamp(0, max).toDouble() / max;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          label:
+              '裁剪时间轴，开始 ${_formatMs(startMs)}，结束 ${_formatMs(endMs)}，当前位置 ${_formatMs(positionMs)}',
+          child: SizedBox(
+            height: 52,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
+                final startX = width * start;
+                final endX = width * end;
+                return Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Positioned(
+                      left: 24,
+                      right: 24,
+                      child: Container(
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 24 + (endX - 24).clamp(0, width),
+                      right: 24 + (width - startX - 24).clamp(0, width),
+                      child: const SizedBox.shrink(),
+                    ),
+                    Positioned(
+                      left: 24 + (startX - 24).clamp(0, width - 48),
+                      width: (endX - startX).clamp(0, width - 48),
+                      child: Container(
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: (startX - 10).clamp(0, width - 20),
+                      child: _TimelineMarker(
+                        label: '开始',
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    Positioned(
+                      left: (endX - 10).clamp(0, width - 20),
+                      child: _TimelineMarker(
+                        label: '结束',
+                        color: theme.colorScheme.tertiary,
+                      ),
+                    ),
+                    Slider(
+                      value: positionMs.clamp(0, max).toDouble(),
+                      min: 0,
+                      max: max.toDouble(),
+                      label: _formatMs(positionMs),
+                      onChanged: enabled
+                          ? (value) => onChanged?.call(value.round())
+                          : null,
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('开始 ${_formatMs(startMs)}', style: theme.textTheme.labelSmall),
+            Text('结束 ${_formatMs(endMs)}', style: theme.textTheme.labelSmall),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _TimelineMarker extends StatelessWidget {
+  const _TimelineMarker({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 20,
+          height: 20,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: Theme.of(context).colorScheme.surface,
+              width: 2,
+            ),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(label, style: Theme.of(context).textTheme.labelSmall),
+      ],
     );
   }
 }
