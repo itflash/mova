@@ -439,24 +439,6 @@ class MainActivity : FlutterActivity() {
             return
         }
         try {
-            if (uris.size == 1) {
-                val uri = uris.first()
-                val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
-                if (mimeType.startsWith("video/")) {
-                    val localCopy = copyUriToCache(uri, displayName(uri))
-                    val durationMs = videoDurationMs(localCopy.absolutePath)
-                    result.success(
-                        mapOf(
-                            "name" to displayName(uri),
-                            "mimeType" to mimeType,
-                            "uri" to Uri.fromFile(localCopy).toString(),
-                            "path" to localCopy.absolutePath,
-                            "durationMs" to durationMs,
-                        )
-                    )
-                    return
-                }
-            }
             val files = uris.map { uri ->
                 mapOf(
                     "name" to displayName(uri),
