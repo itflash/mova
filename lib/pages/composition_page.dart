@@ -844,6 +844,7 @@ class _CompositionClipPreview extends StatefulWidget {
 class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
   VideoPlayerController? _controller;
   bool _ready = false;
+  String? _error;
 
   @override
   void initState() {
@@ -858,6 +859,7 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
       _controller?.dispose();
       _controller = null;
       _ready = false;
+      _error = null;
       _initialize();
     }
   }
@@ -866,11 +868,16 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
     final controller = _createVideoController(widget.uri);
     _controller = controller;
     try {
+      final missingFile = _missingLocalVideoPath(widget.uri);
+      if (missingFile != null) {
+        throw StateError('本地视频文件不存在：$missingFile');
+      }
       await controller.initialize();
       await controller.setVolume(0);
       if (!mounted) return;
       setState(() {
         _ready = true;
+        _error = null;
       });
     } catch (error, stackTrace) {
       debugPrint('Composition preview failed: $error');
@@ -878,6 +885,7 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
       if (!mounted) return;
       setState(() {
         _ready = false;
+        _error = _previewErrorMessage(error);
       });
     }
   }
@@ -892,7 +900,7 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
   Widget build(BuildContext context) {
     final controller = _controller;
     if (!_ready || controller == null || !controller.value.isInitialized) {
-      return const _PreviewFallback(label: '视频暂不可播放');
+      return _PreviewFallback(label: _error ?? '视频暂不可播放');
     }
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -934,6 +942,26 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
       ),
     );
   }
+}
+
+String? _missingLocalVideoPath(String value) {
+  final uri = Uri.tryParse(value);
+  if (uri != null && uri.scheme == 'file') {
+    final path = uri.toFilePath();
+    return File(path).existsSync() ? null : path;
+  }
+  if (value.startsWith('/')) {
+    return File(value).existsSync() ? null : value;
+  }
+  return null;
+}
+
+String _previewErrorMessage(Object error) {
+  final raw = error.toString().replaceFirst('Exception: ', '');
+  if (raw.contains('本地视频文件不存在')) {
+    return '视频文件已失效，请重新选择。';
+  }
+  return '视频暂不可播放，请更换视频后重试。';
 }
 
 class _PreviewFallback extends StatelessWidget {

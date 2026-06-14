@@ -55,6 +55,8 @@ android {
 
     buildTypes {
         release {
+            isMinifyEnabled = false
+            isShrinkResources = false
             // Use a dedicated release keystore when key.properties is present.
             // Fallback to debug signing so local builds still work before signing is configured.
             signingConfig = if (hasReleaseSigning) {

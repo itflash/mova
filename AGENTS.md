@@ -106,6 +106,9 @@ build/app/outputs/flutter-apk/
 
 - `android/app/build.gradle.kts` now prefers release signing from `android/key.properties`
 - If `android/key.properties` or the referenced keystore is missing, release builds fall back to debug signing
+- Release build types currently disable `isMinifyEnabled` and `isShrinkResources`
+- Keep that in mind before changing Android release optimization settings: the clip-page video preview once failed only in release because `video_player_android` lost its Pigeon channel after R8
+- If release optimization is reintroduced, verify the clip page on a real Android release APK, not only with `flutter run`
 - Local release keystore path:
 
 ```bash

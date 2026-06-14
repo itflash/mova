@@ -90,6 +90,9 @@ build/app/outputs/flutter-apk/
 - Release signing is configured in `android/app/build.gradle.kts`
 - Preferred signing source is `android/key.properties`
 - If signing files are missing, release builds fall back to debug signing
+- Release builds currently keep `isMinifyEnabled = false` and `isShrinkResources = false`
+- Reason: the clip-page video preview once lost the `video_player_android` Pigeon channel under release + R8; debug playback was normal but release playback failed
+- If you ever re-enable R8, verify keep rules and test a real Android release APK on-device before shipping
 
 Local signing files:
 

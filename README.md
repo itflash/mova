@@ -253,6 +253,14 @@ storeFile=release.keystore
 - `android/*.jks`
 - `android/*.keystore`
 
+## Android release 注意事项
+
+- 这个项目的剪辑页视频预览依赖 `video_player_android` 的原生通道
+- 之前曾出现过一个只在 release 包里复现的问题：R8 压缩后，`dev.flutter.pigeon.video_player...` 通道注册失败，debug 正常但 release 无法播放
+- 目前 `android/app/build.gradle.kts` 的 release 已显式关闭 `isMinifyEnabled` 和 `isShrinkResources`
+- 如果以后要重新打开 R8，必须先补齐 keep 规则并在真机 release 包上验证剪辑页视频播放
+- 只看 `flutter run` 的结果不够，release 包要单独装到 Android 真机确认一次
+
 这些文件默认已加入 `.gitignore`，不要提交到仓库。
 
 ### GitHub Actions 配置正式签名
