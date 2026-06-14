@@ -41,7 +41,7 @@ class _SeedanceNativeAppState extends State<SeedanceNativeApp>
     return AppScope(
       state: _state,
       child: MaterialApp(
-        title: 'AgentEarth SD2',
+        title: 'Mova',
         debugShowCheckedModeBanner: false,
         themeMode: ThemeMode.system,
         theme: buildLightTheme(),

@@ -129,10 +129,10 @@ class CompositionPage extends StatelessWidget {
                 const SizedBox(height: 14),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: FilledButton.tonalIcon(
+                  child: _NeutralActionButton(
                     onPressed: state.pickCompositionBgm,
                     icon: const Icon(Icons.music_note_rounded),
-                    label: Text(project.audio.bgmSource?.label ?? '选择 BGM'),
+                    label: project.audio.bgmSource?.label ?? '选择 BGM',
                   ),
                 ),
               ],
@@ -174,7 +174,7 @@ class CompositionPage extends StatelessWidget {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      FilledButton.tonalIcon(
+                      _NeutralActionButton(
                         onPressed: () async {
                           final saved = await state
                               .saveCompositionExportToGallery();
@@ -190,9 +190,9 @@ class CompositionPage extends StatelessWidget {
                             );
                         },
                         icon: const Icon(Icons.save_alt_rounded),
-                        label: const Text('保存到相册/文件'),
+                        label: '保存到相册/文件',
                       ),
-                      FilledButton.tonalIcon(
+                      _NeutralActionButton(
                         onPressed: () async {
                           try {
                             final attachmentId = await state
@@ -221,7 +221,7 @@ class CompositionPage extends StatelessWidget {
                           }
                         },
                         icon: const Icon(Icons.photo_library_rounded),
-                        label: const Text('导入素材库'),
+                        label: '导入素材库',
                       ),
                     ],
                   ),
@@ -300,9 +300,42 @@ class _CompositionClipCard extends StatelessWidget {
             const SizedBox(height: 12),
             AspectRatio(
               aspectRatio: 16 / 9,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: _CompositionClipPreview(uri: clip.sourceUri),
+              child: Stack(
+                fit: StackFit.expand,
+                clipBehavior: Clip.none,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: _CompositionClipPreview(uri: clip.sourceUri),
+                  ),
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: Tooltip(
+                      message: '更换视频',
+                      child: Material(
+                        color: theme.colorScheme.surface,
+                        shape: const CircleBorder(),
+                        elevation: 2,
+                        shadowColor: const Color(0x22000000),
+                        child: InkWell(
+                          onTap: () =>
+                              state.pickAndReplaceCompositionVideo(clip.id),
+                          customBorder: const CircleBorder(),
+                          child: SizedBox(
+                            width: 30,
+                            height: 30,
+                            child: Icon(
+                              Icons.swap_horiz_rounded,
+                              size: 16,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 12),
@@ -335,7 +368,6 @@ class _CompositionClipCard extends StatelessWidget {
             const SizedBox(height: 14),
             _ClipActionBar(
               onTrim: () => _openTrimSheet(context, state, clip),
-              onReplace: () => state.pickAndReplaceCompositionVideo(clip.id),
               onMoveUp: () => state.moveCompositionClip(clip.id, -1),
               onMoveDown: () => state.moveCompositionClip(clip.id, 1),
               onDelete: () => state.removeCompositionClip(clip.id),
@@ -350,14 +382,12 @@ class _CompositionClipCard extends StatelessWidget {
 class _ClipActionBar extends StatelessWidget {
   const _ClipActionBar({
     required this.onTrim,
-    required this.onReplace,
     required this.onMoveUp,
     required this.onMoveDown,
     required this.onDelete,
   });
 
   final VoidCallback onTrim;
-  final VoidCallback onReplace;
   final VoidCallback onMoveUp;
   final VoidCallback onMoveDown;
   final VoidCallback onDelete;
@@ -369,31 +399,29 @@ class _ClipActionBar extends StatelessWidget {
       spacing: 8,
       runSpacing: 8,
       children: [
-        _ClipActionChip(
+        _ClipIconActionButton(
           label: '裁剪',
           icon: Icons.cut_rounded,
           onPressed: onTrim,
         ),
-        _ClipActionChip(
-          label: '更换',
-          icon: Icons.swap_horiz_rounded,
-          onPressed: onReplace,
-        ),
-        _ClipActionChip(
+        _ClipIconActionButton(
           label: '上移',
           icon: Icons.arrow_upward_rounded,
           onPressed: onMoveUp,
         ),
-        _ClipActionChip(
+        _ClipIconActionButton(
           label: '下移',
           icon: Icons.arrow_downward_rounded,
           onPressed: onMoveDown,
         ),
-        _ClipActionChip(
+        _ClipIconActionButton(
           label: '删除',
           icon: Icons.delete_outline_rounded,
           onPressed: onDelete,
           foregroundColor: theme.colorScheme.error,
+          backgroundColor: theme.colorScheme.errorContainer.withValues(
+            alpha: 0.45,
+          ),
           borderColor: theme.colorScheme.error.withValues(alpha: 0.45),
         ),
       ],
@@ -401,12 +429,13 @@ class _ClipActionBar extends StatelessWidget {
   }
 }
 
-class _ClipActionChip extends StatelessWidget {
-  const _ClipActionChip({
+class _ClipIconActionButton extends StatelessWidget {
+  const _ClipIconActionButton({
     required this.label,
     required this.icon,
     required this.onPressed,
     this.foregroundColor,
+    this.backgroundColor,
     this.borderColor,
   });
 
@@ -414,31 +443,83 @@ class _ClipActionChip extends StatelessWidget {
   final IconData icon;
   final VoidCallback onPressed;
   final Color? foregroundColor;
+  final Color? backgroundColor;
   final Color? borderColor;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color = foregroundColor ?? theme.colorScheme.onSurfaceVariant;
+    return Semantics(
+      label: label,
+      button: true,
+      child: Tooltip(
+        message: label,
+        child: IconButton(
+          onPressed: onPressed,
+          style: IconButton.styleFrom(
+            backgroundColor:
+                backgroundColor ?? theme.colorScheme.surfaceContainerHighest,
+            foregroundColor: color,
+            fixedSize: const Size(40, 40),
+            padding: EdgeInsets.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            side: BorderSide(
+              color:
+                  borderColor ??
+                  theme.colorScheme.outlineVariant.withValues(alpha: 0.7),
+            ),
+          ),
+          icon: Icon(icon, size: 19),
+        ),
+      ),
+    );
+  }
+}
+
+class _NeutralActionButton extends StatelessWidget {
+  const _NeutralActionButton({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+  });
+
+  final VoidCallback? onPressed;
+  final Widget icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Tooltip(
       message: label,
-      child: ActionChip(
-        avatar: Icon(icon, size: 18, color: color),
-        label: Text(label),
-        labelStyle: theme.textTheme.labelLarge?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
-        side: BorderSide(
-          color:
-              borderColor ??
-              theme.colorScheme.outlineVariant.withValues(alpha: 0.7),
-        ),
-        backgroundColor: theme.colorScheme.surface,
-        pressElevation: 0,
-        visualDensity: VisualDensity.compact,
-        materialTapTargetSize: MaterialTapTargetSize.padded,
+      child: TextButton.icon(
         onPressed: onPressed,
+        style: TextButton.styleFrom(
+          backgroundColor: theme.colorScheme.surfaceContainerHighest,
+          foregroundColor: theme.colorScheme.onSurface,
+          disabledBackgroundColor: theme.colorScheme.surfaceContainerHighest
+              .withValues(alpha: 0.55),
+          disabledForegroundColor: theme.colorScheme.onSurfaceVariant
+              .withValues(alpha: 0.45),
+          minimumSize: const Size(0, 40),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: BorderSide(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.7),
+            ),
+          ),
+        ),
+        icon: IconTheme.merge(
+          data: const IconThemeData(size: 18),
+          child: icon,
+        ),
+        label: Text(label),
       ),
     );
   }
@@ -642,23 +723,23 @@ class _ClipTrimSheetState extends State<_ClipTrimSheet> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  FilledButton.tonalIcon(
+                  _NeutralActionButton(
                     onPressed: () {
                       setState(() {
                         _startMs = _positionMs.clamp(0, _endMs - 1);
                       });
                     },
                     icon: const Icon(Icons.first_page_rounded),
-                    label: const Text('设为开始'),
+                    label: '设为开始',
                   ),
-                  FilledButton.tonalIcon(
+                  _NeutralActionButton(
                     onPressed: () {
                       setState(() {
                         _endMs = _positionMs.clamp(_startMs + 1, _durationMs);
                       });
                     },
                     icon: const Icon(Icons.last_page_rounded),
-                    label: const Text('设为结束'),
+                    label: '设为结束',
                   ),
                 ],
               ),
@@ -724,7 +805,7 @@ class _TrimTimeline extends StatelessWidget {
           label:
               '裁剪时间轴，开始 ${_formatMs(startMs)}，结束 ${_formatMs(endMs)}，当前位置 ${_formatMs(positionMs)}',
           child: SizedBox(
-            height: 52,
+            height: 48,
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final width = constraints.maxWidth;
@@ -734,10 +815,10 @@ class _TrimTimeline extends StatelessWidget {
                   alignment: Alignment.center,
                   children: [
                     Positioned(
-                      left: 24,
-                      right: 24,
+                      left: 20,
+                      right: 20,
                       child: Container(
-                        height: 6,
+                        height: 4,
                         decoration: BoxDecoration(
                           color: theme.colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(999),
@@ -745,15 +826,10 @@ class _TrimTimeline extends StatelessWidget {
                       ),
                     ),
                     Positioned(
-                      left: 24 + (endX - 24).clamp(0, width),
-                      right: 24 + (width - startX - 24).clamp(0, width),
-                      child: const SizedBox.shrink(),
-                    ),
-                    Positioned(
-                      left: 24 + (startX - 24).clamp(0, width - 48),
-                      width: (endX - startX).clamp(0, width - 48),
+                      left: 20 + (startX - 20).clamp(0, width - 40),
+                      width: (endX - startX).clamp(0, width - 40),
                       child: Container(
-                        height: 8,
+                        height: 6,
                         decoration: BoxDecoration(
                           color: theme.colorScheme.primary,
                           borderRadius: BorderRadius.circular(999),
@@ -761,27 +837,42 @@ class _TrimTimeline extends StatelessWidget {
                       ),
                     ),
                     Positioned(
-                      left: (startX - 10).clamp(0, width - 20),
+                      left: (startX - 8).clamp(0, width - 16),
                       child: _TimelineMarker(
-                        label: '开始',
                         color: theme.colorScheme.primary,
                       ),
                     ),
                     Positioned(
-                      left: (endX - 10).clamp(0, width - 20),
+                      left: (endX - 8).clamp(0, width - 16),
                       child: _TimelineMarker(
-                        label: '结束',
                         color: theme.colorScheme.tertiary,
                       ),
                     ),
-                    Slider(
-                      value: positionMs.clamp(0, max).toDouble(),
-                      min: 0,
-                      max: max.toDouble(),
-                      label: _formatMs(positionMs),
-                      onChanged: enabled
-                          ? (value) => onChanged?.call(value.round())
-                          : null,
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: Colors.transparent,
+                        inactiveTrackColor: Colors.transparent,
+                        secondaryActiveTrackColor: Colors.transparent,
+                        disabledActiveTrackColor: Colors.transparent,
+                        disabledInactiveTrackColor: Colors.transparent,
+                        trackHeight: 0,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 8,
+                          disabledThumbRadius: 8,
+                        ),
+                        overlayShape: const RoundSliderOverlayShape(
+                          overlayRadius: 16,
+                        ),
+                      ),
+                      child: Slider(
+                        value: positionMs.clamp(0, max).toDouble(),
+                        min: 0,
+                        max: max.toDouble(),
+                        label: _formatMs(positionMs),
+                        onChanged: enabled
+                            ? (value) => onChanged?.call(value.round())
+                            : null,
+                      ),
                     ),
                   ],
                 );
@@ -789,44 +880,29 @@ class _TrimTimeline extends StatelessWidget {
             ),
           ),
         ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('开始 ${_formatMs(startMs)}', style: theme.textTheme.labelSmall),
-            Text('结束 ${_formatMs(endMs)}', style: theme.textTheme.labelSmall),
-          ],
-        ),
       ],
     );
   }
 }
 
 class _TimelineMarker extends StatelessWidget {
-  const _TimelineMarker({required this.label, required this.color});
+  const _TimelineMarker({required this.color});
 
-  final String label;
   final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 20,
-          height: 20,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: Theme.of(context).colorScheme.surface,
-              width: 2,
-            ),
-          ),
+    return Container(
+      width: 16,
+      height: 16,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Theme.of(context).colorScheme.surface,
+          width: 2,
         ),
-        const SizedBox(height: 2),
-        Text(label, style: Theme.of(context).textTheme.labelSmall),
-      ],
+      ),
     );
   }
 }
