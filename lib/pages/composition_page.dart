@@ -31,9 +31,11 @@ class CompositionPage extends StatelessWidget {
               children: [
                 Text(
                   project.clips.isEmpty
-                      ? '还没有视频片段。'
-                      : '已添加 ${project.clips.length} 个视频片段。',
-                  style: Theme.of(context).textTheme.bodyMedium,
+                      ? '添加视频后，可以裁剪片段、调整顺序和设置转场。'
+                      : '已添加 ${project.clips.length} 个视频片段，按顺序合成为一个视频。',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 if (project.clips.isNotEmpty) ...[
                   const SizedBox(height: 16),
@@ -253,18 +255,44 @@ class _CompositionClipCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.movie_creation_outlined,
-                  color: theme.colorScheme.primary,
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    Icons.movie_creation_outlined,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    clip.label,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        clip.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '片段 ${_formatMs(clip.startMs)} - ${_formatMs(clip.endMs)} · ${_transitionLabel(clip.transitionType)}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -279,10 +307,9 @@ class _CompositionClipCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              '${_formatMs(clip.startMs)} - ${_formatMs(clip.endMs)}',
-              style: theme.textTheme.bodyMedium?.copyWith(
+              '点击“裁剪”可以重新设置开始和结束位置。',
+              style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
-                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
             const SizedBox(height: 12),
@@ -307,28 +334,31 @@ class _CompositionClipCard extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             Wrap(
-              spacing: 10,
-              runSpacing: 10,
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                IconButton.filledTonal(
-                  tooltip: '上移片段',
-                  onPressed: () => state.moveCompositionClip(clip.id, -1),
-                  icon: const Icon(Icons.arrow_upward_rounded),
-                ),
-                IconButton.filledTonal(
-                  tooltip: '下移片段',
-                  onPressed: () => state.moveCompositionClip(clip.id, 1),
-                  icon: const Icon(Icons.arrow_downward_rounded),
-                ),
-                IconButton.filledTonal(
-                  tooltip: '裁剪片段',
+                FilledButton.tonalIcon(
                   onPressed: () => _openTrimSheet(context, state, clip),
                   icon: const Icon(Icons.cut_rounded),
+                  label: const Text('裁剪'),
                 ),
-                IconButton.filledTonal(
-                  tooltip: '删除片段',
+                FilledButton.tonalIcon(
+                  onPressed: () => state.moveCompositionClip(clip.id, -1),
+                  icon: const Icon(Icons.arrow_upward_rounded),
+                  label: const Text('上移'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: () => state.moveCompositionClip(clip.id, 1),
+                  icon: const Icon(Icons.arrow_downward_rounded),
+                  label: const Text('下移'),
+                ),
+                FilledButton.tonalIcon(
+                  style: FilledButton.styleFrom(
+                    foregroundColor: theme.colorScheme.error,
+                  ),
                   onPressed: () => state.removeCompositionClip(clip.id),
                   icon: const Icon(Icons.delete_outline_rounded),
+                  label: const Text('删除'),
                 ),
               ],
             ),
@@ -444,7 +474,30 @@ class _ClipTrimSheetState extends State<_ClipTrimSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('裁剪片段', style: theme.textTheme.titleLarge),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('裁剪片段', style: theme.textTheme.titleLarge),
+                        const SizedBox(height: 4),
+                        Text(
+                          '拖动时间轴到目标位置，再设为开始或结束。',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '关闭',
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
               const SizedBox(height: 12),
               AspectRatio(
                 aspectRatio: 16 / 9,

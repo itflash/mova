@@ -54,10 +54,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('A.mp4'), findsOneWidget);
-    expect(find.byTooltip('裁剪片段'), findsOneWidget);
-    expect(find.byTooltip('上移片段'), findsOneWidget);
-    expect(find.byTooltip('下移片段'), findsOneWidget);
-    expect(find.byTooltip('删除片段'), findsOneWidget);
+    expect(find.text('裁剪'), findsOneWidget);
+    expect(find.text('上移'), findsOneWidget);
+    expect(find.text('下移'), findsOneWidget);
+    expect(find.text('删除'), findsOneWidget);
     expect(find.text('转场'), findsOneWidget);
   });
 
@@ -86,12 +86,12 @@ void main() {
     await tester.tap(find.text('剪辑'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.byTooltip('裁剪片段'),
+      find.text('裁剪'),
       120,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('裁剪片段'));
+    await tester.tap(find.text('裁剪'));
     await tester.pumpAndSettle();
 
     expect(find.text('裁剪片段'), findsOneWidget);
