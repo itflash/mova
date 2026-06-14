@@ -57,7 +57,6 @@ void main() {
     expect(find.byTooltip('裁剪片段'), findsOneWidget);
     expect(find.byTooltip('上移片段'), findsOneWidget);
     expect(find.byTooltip('下移片段'), findsOneWidget);
-    expect(find.byTooltip('复制片段'), findsOneWidget);
     expect(find.byTooltip('删除片段'), findsOneWidget);
     expect(find.text('转场'), findsOneWidget);
   });

@@ -326,11 +326,6 @@ class _CompositionClipCard extends StatelessWidget {
                   icon: const Icon(Icons.cut_rounded),
                 ),
                 IconButton.filledTonal(
-                  tooltip: '复制片段',
-                  onPressed: () => state.duplicateCompositionClip(clip.id),
-                  icon: const Icon(Icons.content_copy_rounded),
-                ),
-                IconButton.filledTonal(
                   tooltip: '删除片段',
                   onPressed: () => state.removeCompositionClip(clip.id),
                   icon: const Icon(Icons.delete_outline_rounded),
