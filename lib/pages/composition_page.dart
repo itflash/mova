@@ -745,15 +745,27 @@ class _PreviewFallback extends StatelessWidget {
 VideoPlayerController _createVideoController(String value) {
   final uri = Uri.parse(value);
   if (value.startsWith('content://')) {
-    return VideoPlayerController.contentUri(uri);
+    return VideoPlayerController.contentUri(
+      uri,
+      viewType: VideoViewType.platformView,
+    );
   }
   if (value.startsWith('file://')) {
-    return VideoPlayerController.file(File(uri.toFilePath()));
+    return VideoPlayerController.file(
+      File(uri.toFilePath()),
+      viewType: VideoViewType.platformView,
+    );
   }
   if (value.startsWith('/')) {
-    return VideoPlayerController.file(File(value));
+    return VideoPlayerController.file(
+      File(value),
+      viewType: VideoViewType.platformView,
+    );
   }
-  return VideoPlayerController.networkUrl(uri);
+  return VideoPlayerController.networkUrl(
+    uri,
+    viewType: VideoViewType.platformView,
+  );
 }
 
 String _formatMs(int milliseconds) {
