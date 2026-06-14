@@ -43,305 +43,331 @@ class _CreatePageState extends State<CreatePage> {
     _handleMentionSheet(context, state);
     _ensureToolResolution(state);
 
+    final canSubmit = state.validationMessages.isEmpty && !state.isSubmitting;
+    final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+
     return AppPageScaffold(
       eyebrow: 'Create',
       title: '创作',
       subtitle: '提示词、素材和参数。',
-      trailing: _SubmitCluster(
-        state: state,
-        onSubmit: state.validationMessages.isEmpty && !state.isSubmitting
-            ? () => _submitTask(context, state)
-            : null,
-      ),
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 6, 20, 28),
+      child: Stack(
         children: [
-          SectionLabel('模式'),
-          UtilityPanel(
-            child: _ModeSelector(
-              modes: modes,
-              selectedMode: state.activeMode,
-              onChanged: state.setActiveMode,
-            ),
-          ),
-          const SizedBox(height: 16),
-          SectionLabel('描述'),
-          UtilityPanel(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _HeaderActionRow(
-                  title: state.activeMode == ModeId.text
-                      ? 'Prompt'
-                      : state.supportsPromptMentions
-                      ? '参考素材与 Prompt'
-                      : '画面与动作描述',
-                  actionLabel: state.prompt.isEmpty ? null : '清空',
-                  onTap: state.prompt.isEmpty
-                      ? null
-                      : () {
-                          _clearPrompt(context, state);
-                        },
+          ListView(
+            padding: const EdgeInsets.fromLTRB(20, 6, 20, 112),
+            children: [
+              SectionLabel('模式'),
+              UtilityPanel(
+                child: _ModeSelector(
+                  modes: modes,
+                  selectedMode: state.activeMode,
+                  onChanged: state.setActiveMode,
                 ),
-                if (state.usesFrameSlots)
-                  _VideoFrameSlots(
-                    state: state,
-                    onPreview: (attachment) =>
-                        _openAttachmentPreview(context, attachment),
-                    onPickFirstFrame: () => _openVideoFramePicker(
-                      context,
-                      state,
-                      role: AttachmentRole.firstFrame,
-                    ),
-                    onPickLastFrame: state.activeMode == ModeId.firstLast
-                        ? () => _openVideoFramePicker(
-                            context,
-                            state,
-                            role: AttachmentRole.lastFrame,
-                          )
-                        : null,
-                    onCaptureFirstFrame: () => _openFrameCaptureFlow(
-                      context,
-                      state,
-                      role: AttachmentRole.firstFrame,
-                    ),
-                    onCaptureLastFrame: state.activeMode == ModeId.firstLast
-                        ? () => _openFrameCaptureFlow(
-                            context,
-                            state,
-                            role: AttachmentRole.lastFrame,
-                          )
-                        : null,
-                  )
-                else if (state.selectedAttachments.isNotEmpty)
-                  _SelectedAttachmentStrip(
-                    attachments: state.selectedAttachments,
-                    onPreview: (attachment) =>
-                        _openAttachmentPreview(context, attachment),
-                    onReplace: (attachment) =>
-                        _openReplacementSheet(context, state, attachment),
-                  )
-                else
-                  Text(
-                    state.activeMode == ModeId.text
-                        ? '描述镜头、动作和氛围。'
-                        : '参考模式下可以在 Prompt 里输入 @ 插入素材标签。',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: _promptController,
-                  minLines: 6,
-                  maxLines: 9,
-                  onChanged: (value) {
-                    _applyPromptChange(state, value);
-                  },
-                  onTap: () => _inspectMention(state),
-                  decoration: InputDecoration(
-                    hintText: state.activeMode == ModeId.text
-                        ? '描述镜头、动作和氛围。'
-                        : state.supportsPromptMentions
-                        ? '描述镜头、动作和氛围，也可以输入 @ 插入素材标签。'
-                        : '描述从首帧到尾帧之间的动作、镜头和氛围。',
-                  ),
-                ),
-                if (state.supportsPromptMentions) ...[
-                  const SizedBox(height: 14),
-                  UtilityTile(
-                    title: '素材引用',
-                    subtitle: '在光标处插入素材占位。',
-                    trailing: ToolIconButton(
-                      tooltip: '浏览素材',
-                      icon: Icons.alternate_email_rounded,
-                      onPressed: state.uploadedLibrary.isEmpty
+              ),
+              const SizedBox(height: 16),
+              SectionLabel('描述'),
+              UtilityPanel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _HeaderActionRow(
+                      title: state.activeMode == ModeId.text
+                          ? 'Prompt'
+                          : state.supportsPromptMentions
+                          ? '参考素材与 Prompt'
+                          : '画面与动作描述',
+                      actionLabel: state.prompt.isEmpty ? null : '清空',
+                      onTap: state.prompt.isEmpty
                           ? null
-                          : () => _openMentionSheet(context, state),
+                          : () {
+                              _clearPrompt(context, state);
+                            },
                     ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          SectionLabel('参数'),
-          UtilityPanel(
-            child: Column(
-              children: [
-                _ValueRow(
-                  label: '时长',
-                  child: SizedBox(
-                    width: 92,
-                    child: TextField(
-                      controller:
-                          TextEditingController(text: state.metadata.duration)
-                            ..selection = TextSelection.collapsed(
-                              offset: state.metadata.duration.length,
-                            ),
-                      textAlign: TextAlign.right,
-                      decoration: const InputDecoration(isDense: true),
-                      onChanged: (value) => state.updateMetadata(
-                        (current) => current.copyWith(duration: value),
+                    if (state.usesFrameSlots)
+                      _VideoFrameSlots(
+                        state: state,
+                        onPreview: (attachment) =>
+                            _openAttachmentPreview(context, attachment),
+                        onPickFirstFrame: () => _openVideoFramePicker(
+                          context,
+                          state,
+                          role: AttachmentRole.firstFrame,
+                        ),
+                        onPickLastFrame: state.activeMode == ModeId.firstLast
+                            ? () => _openVideoFramePicker(
+                                context,
+                                state,
+                                role: AttachmentRole.lastFrame,
+                              )
+                            : null,
+                        onCaptureFirstFrame: () => _openFrameCaptureFlow(
+                          context,
+                          state,
+                          role: AttachmentRole.firstFrame,
+                        ),
+                        onCaptureLastFrame: state.activeMode == ModeId.firstLast
+                            ? () => _openFrameCaptureFlow(
+                                context,
+                                state,
+                                role: AttachmentRole.lastFrame,
+                              )
+                            : null,
+                      )
+                    else if (state.selectedAttachments.isNotEmpty)
+                      _SelectedAttachmentStrip(
+                        attachments: state.selectedAttachments,
+                        onPreview: (attachment) =>
+                            _openAttachmentPreview(context, attachment),
+                        onReplace: (attachment) =>
+                            _openReplacementSheet(context, state, attachment),
+                      )
+                    else
+                      Text(
+                        state.activeMode == ModeId.text
+                            ? '描述镜头、动作和氛围。'
+                            : '参考模式下可以在 Prompt 里输入 @ 插入素材标签。',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: _promptController,
+                      minLines: 6,
+                      maxLines: 9,
+                      onChanged: (value) {
+                        _applyPromptChange(state, value);
+                      },
+                      onTap: () => _inspectMention(state),
+                      decoration: InputDecoration(
+                        hintText: state.activeMode == ModeId.text
+                            ? '描述镜头、动作和氛围。'
+                            : state.supportsPromptMentions
+                            ? '描述镜头、动作和氛围，也可以输入 @ 插入素材标签。'
+                            : '描述从首帧到尾帧之间的动作、镜头和氛围。',
                       ),
                     ),
-                  ),
+                    if (state.supportsPromptMentions) ...[
+                      const SizedBox(height: 14),
+                      UtilityTile(
+                        title: '素材引用',
+                        subtitle: '在光标处插入素材占位。',
+                        trailing: ToolIconButton(
+                          tooltip: '浏览素材',
+                          icon: Icons.alternate_email_rounded,
+                          onPressed: state.uploadedLibrary.isEmpty
+                              ? null
+                              : () => _openMentionSheet(context, state),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                const PanelDivider(),
-                _ValueRow(
-                  label: '分辨率',
-                  child: SizedBox(
-                    width: 120,
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        isExpanded: true,
-                        alignment: Alignment.centerRight,
-                        value: state.metadata.resolution,
-                        borderRadius: BorderRadius.circular(16),
-                        items: const [
-                          DropdownMenuItem(value: '480p', child: Text('480p')),
-                          DropdownMenuItem(value: '720p', child: Text('720p')),
-                          DropdownMenuItem(
-                            value: '1080p',
-                            child: Text('1080p'),
+              ),
+              const SizedBox(height: 16),
+              SectionLabel('参数'),
+              UtilityPanel(
+                child: Column(
+                  children: [
+                    _ValueRow(
+                      label: '时长',
+                      child: SizedBox(
+                        width: 92,
+                        child: TextField(
+                          controller:
+                              TextEditingController(
+                                  text: state.metadata.duration,
+                                )
+                                ..selection = TextSelection.collapsed(
+                                  offset: state.metadata.duration.length,
+                                ),
+                          textAlign: TextAlign.right,
+                          decoration: const InputDecoration(isDense: true),
+                          onChanged: (value) => state.updateMetadata(
+                            (current) => current.copyWith(duration: value),
                           ),
-                        ],
-                        onChanged: (value) {
-                          if (value == null) return;
-                          state.updateMetadata(
-                            (current) => current.copyWith(resolution: value),
-                          );
-                        },
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                const PanelDivider(),
-                _ValueRow(
-                  label: '比例',
-                  child: SizedBox(
-                    width: 120,
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        isExpanded: true,
-                        alignment: Alignment.centerRight,
-                        value: state.metadata.ratio,
-                        borderRadius: BorderRadius.circular(16),
-                        items: const [
-                          DropdownMenuItem(value: '16:9', child: Text('16:9')),
-                          DropdownMenuItem(value: '9:16', child: Text('9:16')),
-                          DropdownMenuItem(value: '1:1', child: Text('1:1')),
-                          DropdownMenuItem(value: '4:3', child: Text('4:3')),
-                          DropdownMenuItem(
-                            value: 'adaptive',
-                            child: Text('adaptive'),
+                    const PanelDivider(),
+                    _ValueRow(
+                      label: '分辨率',
+                      child: SizedBox(
+                        width: 120,
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            isExpanded: true,
+                            alignment: Alignment.centerRight,
+                            value: state.metadata.resolution,
+                            borderRadius: BorderRadius.circular(16),
+                            items: const [
+                              DropdownMenuItem(
+                                value: '480p',
+                                child: Text('480p'),
+                              ),
+                              DropdownMenuItem(
+                                value: '720p',
+                                child: Text('720p'),
+                              ),
+                              DropdownMenuItem(
+                                value: '1080p',
+                                child: Text('1080p'),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              if (value == null) return;
+                              state.updateMetadata(
+                                (current) =>
+                                    current.copyWith(resolution: value),
+                              );
+                            },
                           ),
-                        ],
-                        onChanged: (value) {
-                          if (value == null) return;
-                          state.updateMetadata(
-                            (current) => current.copyWith(ratio: value),
-                          );
-                        },
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                const PanelDivider(),
-                _ValueRow(
-                  label: 'Seed',
-                  child: SizedBox(
-                    width: 140,
-                    child: TextField(
-                      controller:
-                          TextEditingController(text: state.metadata.seed)
-                            ..selection = TextSelection.collapsed(
-                              offset: state.metadata.seed.length,
-                            ),
-                      textAlign: TextAlign.right,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        hintText: '留空',
-                      ),
-                      onChanged: (value) => state.updateMetadata(
-                        (current) => current.copyWith(seed: value),
+                    const PanelDivider(),
+                    _ValueRow(
+                      label: '比例',
+                      child: SizedBox(
+                        width: 120,
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            isExpanded: true,
+                            alignment: Alignment.centerRight,
+                            value: state.metadata.ratio,
+                            borderRadius: BorderRadius.circular(16),
+                            items: const [
+                              DropdownMenuItem(
+                                value: '16:9',
+                                child: Text('16:9'),
+                              ),
+                              DropdownMenuItem(
+                                value: '9:16',
+                                child: Text('9:16'),
+                              ),
+                              DropdownMenuItem(
+                                value: '1:1',
+                                child: Text('1:1'),
+                              ),
+                              DropdownMenuItem(
+                                value: '4:3',
+                                child: Text('4:3'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'adaptive',
+                                child: Text('adaptive'),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              if (value == null) return;
+                              state.updateMetadata(
+                                (current) => current.copyWith(ratio: value),
+                              );
+                            },
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 6, bottom: 4),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '留空时由上游随机生成；填写后更容易复现相近结果，适合做多轮微调。',
-                      style: Theme.of(context).textTheme.bodySmall,
+                    const PanelDivider(),
+                    _ValueRow(
+                      label: 'Seed',
+                      child: SizedBox(
+                        width: 140,
+                        child: TextField(
+                          controller:
+                              TextEditingController(text: state.metadata.seed)
+                                ..selection = TextSelection.collapsed(
+                                  offset: state.metadata.seed.length,
+                                ),
+                          textAlign: TextAlign.right,
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            hintText: '留空',
+                          ),
+                          onChanged: (value) => state.updateMetadata(
+                            (current) => current.copyWith(seed: value),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                const PanelDivider(),
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('生成音频'),
-                  subtitle: Text(
-                    fieldHelp['generateAudio']!,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  value: state.metadata.generateAudio,
-                  onChanged: (value) => state.updateMetadata(
-                    (current) => current.copyWith(generateAudio: value),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          SectionLabel('高级与预览'),
-          _PreviewDisclosureCard(
-            title: '请求预览',
-            subtitle: '提交前查看将发送给 AgentEarth 的工具和参数。',
-            child: _RequestPreviewCard(state: state),
-          ),
-          const SizedBox(height: 16),
-          _SubmitPanel(
-            state: state,
-            onSubmit: state.validationMessages.isEmpty && !state.isSubmitting
-                ? () => _submitTask(context, state)
-                : null,
-          ),
-          if (state.validationMessages.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            SectionLabel('提示'),
-            UtilityPanel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: state.validationMessages
-                    .map(
-                      (message) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6, bottom: 4),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
                         child: Text(
-                          message,
+                          '留空时由上游随机生成；填写后更容易复现相近结果，适合做多轮微调。',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ),
-                    )
-                    .toList(),
-              ),
-            ),
-          ],
-          if (state.submitErrorMessage != null) ...[
-            const SizedBox(height: 16),
-            SectionLabel('提交失败'),
-            UtilityPanel(
-              child: UtilityTile(
-                title: state.submitErrorMessage!,
-                subtitle: '任务没有被创建，也不会产生扣费执行记录。',
-                trailing: Icon(
-                  Icons.error_outline_rounded,
-                  color: Theme.of(context).colorScheme.error,
-                  size: 18,
+                    ),
+                    const PanelDivider(),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('生成音频'),
+                      subtitle: Text(
+                        fieldHelp['generateAudio']!,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      value: state.metadata.generateAudio,
+                      onChanged: (value) => state.updateMetadata(
+                        (current) => current.copyWith(generateAudio: value),
+                      ),
+                    ),
+                  ],
                 ),
               ),
+              const SizedBox(height: 16),
+              SectionLabel('高级与预览'),
+              _PreviewDisclosureCard(
+                title: '请求预览',
+                subtitle: '提交前查看将发送给 AgentEarth 的工具和参数。',
+                child: _RequestPreviewCard(state: state),
+              ),
+              if (state.validationMessages.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                SectionLabel('提示'),
+                UtilityPanel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: state.validationMessages
+                        .map(
+                          (message) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              message,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              ],
+              if (state.submitErrorMessage != null) ...[
+                const SizedBox(height: 16),
+                SectionLabel('提交失败'),
+                UtilityPanel(
+                  child: UtilityTile(
+                    title: state.submitErrorMessage!,
+                    subtitle: '任务没有被创建，也不会产生扣费执行记录。',
+                    trailing: Icon(
+                      Icons.error_outline_rounded,
+                      color: Theme.of(context).colorScheme.error,
+                      size: 18,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (!keyboardOpen)
+            Positioned(
+              right: 20,
+              bottom: 16,
+              child: FloatingSubmitBar(
+                resolution: state.activeToolResolution,
+                label: '提交',
+                submitting: state.isSubmitting,
+                onPressed: canSubmit ? () => _submitTask(context, state) : null,
+              ),
             ),
-          ],
         ],
       ),
     );
@@ -631,33 +657,6 @@ class _CreatePageState extends State<CreatePage> {
   }
 }
 
-class _SubmitCluster extends StatelessWidget {
-  const _SubmitCluster({required this.state, required this.onSubmit});
-
-  final AppState state;
-  final VoidCallback? onSubmit;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        CreditBadge(resolution: state.activeToolResolution),
-        const SizedBox(height: 8),
-        ToolIconButton(
-          tooltip: state.isSubmitting ? '提交中' : '提交任务',
-          icon: state.isSubmitting
-              ? Icons.more_horiz_rounded
-              : Icons.arrow_upward_rounded,
-          emphasized: true,
-          onPressed: onSubmit,
-        ),
-      ],
-    );
-  }
-}
-
 class _RequestPreviewCard extends StatelessWidget {
   const _RequestPreviewCard({required this.state});
 
@@ -779,50 +778,6 @@ class _PreviewDisclosureCardState extends State<_PreviewDisclosureCard> {
                 ? CrossFadeState.showSecond
                 : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 180),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SubmitPanel extends StatelessWidget {
-  const _SubmitPanel({required this.state, required this.onSubmit});
-
-  final AppState state;
-  final VoidCallback? onSubmit;
-
-  @override
-  Widget build(BuildContext context) {
-    final tool = state.activeToolResolution.tool;
-    final creditText =
-        state.activeToolResolution.status == ToolResolutionStatus.ready &&
-            tool != null
-        ? '本次工具积分：${tool.credit} credits'
-        : '获取到 AgentEarth 工具积分后会在这里显示';
-
-    return UtilityPanel(
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              creditText,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color:
-                    state.activeToolResolution.status ==
-                        ToolResolutionStatus.ready
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          CapsuleButton(
-            label: state.isSubmitting ? '提交中...' : '提交任务',
-            icon: Icons.arrow_upward_rounded,
-            emphasized: true,
-            onPressed: onSubmit,
           ),
         ],
       ),

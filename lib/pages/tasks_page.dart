@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
@@ -375,9 +376,9 @@ class TasksPage extends StatelessWidget {
     return '${value.year}-${two(value.month)}-${two(value.day)} ${two(value.hour)}:${two(value.minute)}:${two(value.second)}';
   }
 
-  static String _formatCompactDateTime(DateTime value) {
+  static String _formatMetaDateTime(DateTime value) {
     String two(int number) => number.toString().padLeft(2, '0');
-    return '${two(value.month)}-${two(value.day)} ${two(value.hour)}:${two(value.minute)}';
+    return '${two(value.month)}-${two(value.day)} ${two(value.hour)}:${two(value.minute)}:${two(value.second)}';
   }
 
   static IconData _iconForAttachment(AttachmentKind kind) {
@@ -702,8 +703,11 @@ class _TaskMetaRow extends StatelessWidget {
     return Row(
       children: [
         for (var index = 0; index < items.length; index++) ...[
-          Expanded(child: _TaskMetaChip(item: items[index])),
-          if (index != items.length - 1) const SizedBox(width: 6),
+          Expanded(
+            flex: items[index].flex,
+            child: _TaskMetaChip(item: items[index]),
+          ),
+          if (index != items.length - 1) const SizedBox(width: 5),
         ],
       ],
     );
@@ -711,10 +715,11 @@ class _TaskMetaRow extends StatelessWidget {
 }
 
 class _TaskMetaItem {
-  const _TaskMetaItem({required this.icon, required this.label});
+  const _TaskMetaItem({required this.icon, required this.label, this.flex = 1});
 
   final IconData icon;
   final String label;
+  final int flex;
 }
 
 class _TaskMetaChip extends StatelessWidget {
@@ -727,7 +732,7 @@ class _TaskMetaChip extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
       height: 30,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 6),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
         borderRadius: BorderRadius.circular(999),
@@ -735,8 +740,8 @@ class _TaskMetaChip extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(item.icon, size: 13, color: colorScheme.onSurfaceVariant),
-          const SizedBox(width: 5),
+          Icon(item.icon, size: 12, color: colorScheme.onSurfaceVariant),
+          const SizedBox(width: 4),
           Flexible(
             child: Text(
               item.label,
@@ -1162,17 +1167,15 @@ class _VideoTaskCard extends StatelessWidget {
                           items: [
                             _TaskMetaItem(
                               icon: Icons.schedule_rounded,
-                              label: TasksPage._formatCompactDateTime(
+                              label: TasksPage._formatMetaDateTime(
                                 task.updatedAt,
                               ),
+                              flex: 3,
                             ),
                             _TaskMetaItem(
                               icon: Icons.bolt_outlined,
-                              label: '积分 ${task.estimatedCredit}',
-                            ),
-                            _TaskMetaItem(
-                              icon: Icons.attach_file_rounded,
-                              label: '素材 ${task.attachments.length}',
+                              label: '${task.estimatedCredit}',
+                              flex: 1,
                             ),
                           ],
                         ),
@@ -1277,9 +1280,6 @@ class _ImageTaskCard extends StatelessWidget {
         .map((item) => _TaskImagePreviewData.fromResult(state, item))
         .whereType<_TaskImagePreviewData>()
         .toList();
-    final imported = task.imageResults
-        .where((r) => r.status == ImageResultStatus.imported)
-        .length;
     final failed = task.imageResults
         .where(
           (r) =>
@@ -1314,17 +1314,15 @@ class _ImageTaskCard extends StatelessWidget {
                           items: [
                             _TaskMetaItem(
                               icon: Icons.schedule_rounded,
-                              label: TasksPage._formatCompactDateTime(
+                              label: TasksPage._formatMetaDateTime(
                                 task.updatedAt,
                               ),
+                              flex: 3,
                             ),
                             _TaskMetaItem(
                               icon: Icons.bolt_outlined,
-                              label: '积分 ${task.estimatedCredit}',
-                            ),
-                            _TaskMetaItem(
-                              icon: Icons.check_circle_outline_rounded,
-                              label: '入库 $imported/${task.imageResults.length}',
+                              label: '${task.estimatedCredit}',
+                              flex: 1,
                             ),
                           ],
                         ),
@@ -1690,6 +1688,7 @@ class _TaskVideoPlayer extends StatefulWidget {
 
 class _TaskVideoPlayerState extends State<_TaskVideoPlayer> {
   VideoPlayerController? _controller;
+  ChewieController? _chewieController;
   bool _loading = true;
 
   @override
@@ -1706,8 +1705,27 @@ class _TaskVideoPlayerState extends State<_TaskVideoPlayer> {
         await controller.dispose();
         return;
       }
+      final primaryColor = Theme.of(context).colorScheme.primary;
       setState(() {
         _controller = controller;
+        _chewieController = ChewieController(
+          videoPlayerController: controller,
+          aspectRatio: controller.value.aspectRatio == 0
+              ? 16 / 9
+              : controller.value.aspectRatio,
+          autoPlay: false,
+          looping: false,
+          showOptions: false,
+          allowPlaybackSpeedChanging: false,
+          customControls: const MovaVideoControls(),
+          placeholder: const ColoredBox(color: Colors.black),
+          materialProgressColors: ChewieProgressColors(
+            playedColor: primaryColor,
+            handleColor: primaryColor,
+            bufferedColor: Colors.white38,
+            backgroundColor: Colors.white24,
+          ),
+        );
         _loading = false;
       });
     } catch (_) {
@@ -1718,6 +1736,7 @@ class _TaskVideoPlayerState extends State<_TaskVideoPlayer> {
 
   @override
   void dispose() {
+    _chewieController?.dispose();
     _controller?.dispose();
     super.dispose();
   }
@@ -1734,7 +1753,10 @@ class _TaskVideoPlayerState extends State<_TaskVideoPlayer> {
       );
     }
     final controller = _controller;
-    if (controller == null || !controller.value.isInitialized) {
+    final chewieController = _chewieController;
+    if (controller == null ||
+        !controller.value.isInitialized ||
+        chewieController == null) {
       return Container(
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -1749,62 +1771,13 @@ class _TaskVideoPlayerState extends State<_TaskVideoPlayer> {
       borderRadius: BorderRadius.circular(18),
       child: ColoredBox(
         color: Colors.black,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Center(
-              child: AspectRatio(
-                aspectRatio: controller.value.aspectRatio == 0
-                    ? 16 / 9
-                    : controller.value.aspectRatio,
-                child: VideoPlayer(controller),
-              ),
-            ),
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0x00000000), Color(0xB3000000)],
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    IconButton.filledTonal(
-                      tooltip: controller.value.isPlaying ? '暂停' : '播放',
-                      onPressed: () {
-                        setState(() {
-                          controller.value.isPlaying
-                              ? controller.pause()
-                              : controller.play();
-                        });
-                      },
-                      icon: Icon(
-                        controller.value.isPlaying
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: VideoProgressIndicator(
-                        controller,
-                        allowScrubbing: true,
-                        colors: const VideoProgressColors(
-                          playedColor: Colors.white,
-                          bufferedColor: Colors.white38,
-                          backgroundColor: Colors.white24,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+        child: Center(
+          child: AspectRatio(
+            aspectRatio: controller.value.aspectRatio == 0
+                ? 16 / 9
+                : controller.value.aspectRatio,
+            child: Chewie(controller: chewieController),
+          ),
         ),
       ),
     );
@@ -1837,14 +1810,14 @@ class _ImageResultTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final (label, color) = switch (item.status) {
-      ImageResultStatus.queued => ('等待生成', scheme.onSurfaceVariant),
+      ImageResultStatus.queued => ('生成中', scheme.onSurfaceVariant),
       ImageResultStatus.generating => ('生成中', scheme.tertiary),
-      ImageResultStatus.readyToTransfer => ('待转存', scheme.tertiary),
+      ImageResultStatus.readyToTransfer => ('待下载', scheme.tertiary),
       ImageResultStatus.downloading => ('下载中', scheme.primary),
-      ImageResultStatus.downloadFailed => ('下载失败', scheme.error),
-      ImageResultStatus.uploading => ('上传中', scheme.primary),
-      ImageResultStatus.uploadFailed => ('上传失败', scheme.error),
-      ImageResultStatus.imported => ('已入库', Colors.green.shade700),
+      ImageResultStatus.downloadFailed => ('失败', scheme.error),
+      ImageResultStatus.uploading => ('入库中', scheme.primary),
+      ImageResultStatus.uploadFailed => ('失败', scheme.error),
+      ImageResultStatus.imported => ('已入库', scheme.onSurfaceVariant),
     };
 
     return Row(
@@ -1880,6 +1853,7 @@ class _TaskImagePreviewData {
     required this.url,
     required this.label,
     required this.source,
+    required this.status,
     this.attachment,
   });
 
@@ -1887,6 +1861,7 @@ class _TaskImagePreviewData {
   final String url;
   final String label;
   final String source;
+  final ImageResultStatus status;
   final Attachment? attachment;
 
   static _TaskImagePreviewData? fromResult(
@@ -1902,6 +1877,7 @@ class _TaskImagePreviewData {
       url: url,
       label: attachment?.label ?? '结果图',
       source: source,
+      status: item.status,
       attachment: attachment,
     );
   }
@@ -1920,6 +1896,11 @@ class _TaskImagePreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final (statusLabel, statusColor) = _imageResultStatusBadge(
+      colorScheme,
+      item.status,
+    );
     final previewAttachments = allItems
         .map(
           (entry) =>
@@ -1960,16 +1941,60 @@ class _TaskImagePreviewCard extends StatelessWidget {
       ),
       child: SizedBox(
         width: 96,
-        child: AttachmentThumb(
-          attachment: previewAttachment,
-          width: 96,
-          height: 76,
-          radius: 14,
-          overlayLabel: '',
+        child: Stack(
+          children: [
+            AttachmentThumb(
+              attachment: previewAttachment,
+              width: 96,
+              height: 76,
+              radius: 14,
+              overlayLabel: '',
+            ),
+            Positioned(
+              left: 6,
+              bottom: 6,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface.withValues(alpha: 0.78),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: statusColor.withValues(alpha: 0.16),
+                  ),
+                ),
+                child: Text(
+                  statusLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: statusColor,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 10,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+}
+
+(String, Color) _imageResultStatusBadge(
+  ColorScheme scheme,
+  ImageResultStatus status,
+) {
+  return switch (status) {
+    ImageResultStatus.queued => ('生成中', scheme.onSurfaceVariant),
+    ImageResultStatus.generating => ('生成中', scheme.tertiary),
+    ImageResultStatus.readyToTransfer => ('待下载', scheme.tertiary),
+    ImageResultStatus.downloading => ('下载中', scheme.primary),
+    ImageResultStatus.downloadFailed => ('失败', scheme.error),
+    ImageResultStatus.uploading => ('入库中', scheme.primary),
+    ImageResultStatus.uploadFailed => ('失败', scheme.error),
+    ImageResultStatus.imported => ('已入库', scheme.onSurfaceVariant),
+  };
 }
 
 class _ImageTaskActionBar extends StatelessWidget {

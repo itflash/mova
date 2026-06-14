@@ -468,7 +468,7 @@ class _CompactAttachmentRow extends StatelessWidget {
                     attachments: previewAttachments,
                   )
                 : null,
-            child: AttachmentThumb(
+            child: _AttachmentThumbWithFileSize(
               attachment: attachment,
               width: 64,
               height: 64,
@@ -507,10 +507,6 @@ class _CompactAttachmentRow extends StatelessWidget {
                     ),
                     Text(
                       state.storageProviderLabel(attachment.storageProvider),
-                      style: theme.textTheme.labelSmall,
-                    ),
-                    Text(
-                      _formatFileSize(attachment.fileSizeBytes),
                       style: theme.textTheme.labelSmall,
                     ),
                     Text(
@@ -1204,7 +1200,7 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                         attachments: widget.previewAttachments,
                       )
                     : null,
-                child: AttachmentThumb(
+                child: _AttachmentThumbWithFileSize(
                   attachment: attachment,
                   width: 76,
                   height: 76,
@@ -1257,7 +1253,6 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                         displayCategoryLabel(attachment.category),
                         _roleLabel(attachment.role),
                         state.storageProviderLabel(attachment.storageProvider),
-                        _formatFileSize(attachment.fileSizeBytes),
                       ].join(' · '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -1268,10 +1263,11 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                       spacing: 6,
                       runSpacing: 6,
                       children: [
-                        StatusPill(
-                          label: _statusLabel(attachment.status),
-                          tone: _statusColor(context, attachment.status),
-                        ),
+                        if (attachment.status != AttachmentStatus.uploaded)
+                          StatusPill(
+                            label: _statusLabel(attachment.status),
+                            tone: _statusColor(context, attachment.status),
+                          ),
                         if (attachment.kind == AttachmentKind.video)
                           StatusPill(
                             label: _localStatusLabel(attachment),
@@ -1490,7 +1486,7 @@ class _AttachmentCardState extends State<_AttachmentCard> {
       case AttachmentStatus.uploading:
         return '上传中';
       case AttachmentStatus.uploaded:
-        return '可引用';
+        return '';
       case AttachmentStatus.error:
         return '上传失败';
     }
@@ -1504,7 +1500,7 @@ class _AttachmentCardState extends State<_AttachmentCard> {
       case AttachmentStatus.uploading:
         return scheme.tertiary;
       case AttachmentStatus.uploaded:
-        return Colors.green.shade700;
+        return scheme.onSurfaceVariant;
       case AttachmentStatus.error:
         return scheme.error;
     }
@@ -1554,6 +1550,71 @@ String _formatFileSize(int? bytes) {
   }
   if (unitIndex == 0) return '${value.round()} ${units[unitIndex]}';
   return '${value.toStringAsFixed(value >= 10 ? 1 : 2)} ${units[unitIndex]}';
+}
+
+class _AttachmentThumbWithFileSize extends StatelessWidget {
+  const _AttachmentThumbWithFileSize({
+    required this.attachment,
+    required this.width,
+    required this.height,
+    required this.radius,
+    required this.overlayLabel,
+  });
+
+  final Attachment attachment;
+  final double width;
+  final double height;
+  final double radius;
+  final String overlayLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final fileSize =
+        attachment.fileSizeBytes == null || attachment.fileSizeBytes! < 0
+        ? null
+        : _formatFileSize(attachment.fileSizeBytes);
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        AttachmentThumb(
+          attachment: attachment,
+          width: width,
+          height: height,
+          radius: radius,
+          overlayLabel: overlayLabel,
+        ),
+        if (fileSize != null)
+          Positioned(
+            right: 5,
+            top: 5,
+            child: Container(
+              constraints: BoxConstraints(maxWidth: width - 10),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: colorScheme.surface.withValues(alpha: 0.78),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.38),
+                ),
+              ),
+              child: Text(
+                fileSize,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.05,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 String _storageProviderLabel(StorageProvider provider) {

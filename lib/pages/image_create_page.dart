@@ -33,10 +33,17 @@ class _ImageCreatePageState extends State<ImageCreatePage> {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     _syncPrompt(state);
+    _ensureImageToolResolution(state);
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final isEditMode = state.activeImageMode == ImageCreateMode.imageToImage;
+    final hasPrompt = state.imagePrompt.trim().isNotEmpty;
+    final hasRequiredReferences =
+        !isEditMode || state.selectedImageAttachments.isNotEmpty;
+    final canSubmit =
+        hasPrompt && hasRequiredReferences && !state.isSubmittingImageTask;
+    final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
 
     return Scaffold(
       backgroundColor: isDark
@@ -48,174 +55,181 @@ class _ImageCreatePageState extends State<ImageCreatePage> {
           eyebrow: 'Create',
           title: '图片创作',
           subtitle: isEditMode ? '用参考图继续改图并自动入库。' : '生成图片并自动入库到素材库。',
-          trailing: _ImageSubmitCluster(
-            state: state,
-            onSubmit:
-                state.imagePrompt.trim().isNotEmpty &&
-                    !state.isSubmittingImageTask
-                ? () => _submitImageTask(context, state)
-                : null,
-          ),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 6, 20, 28),
+          child: Stack(
             children: [
-              SectionLabel('模式'),
-              UtilityPanel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _ImageModeSelector(state: state),
-                    const SizedBox(height: 12),
-                    Text(
-                      isEditMode ? '上传或选择参考图，再用提示词描述你希望怎么改。' : '使用文字描述直接生成图片。',
-                      style: theme.textTheme.bodySmall,
+              ListView(
+                padding: const EdgeInsets.fromLTRB(20, 6, 20, 112),
+                children: [
+                  SectionLabel('模式'),
+                  UtilityPanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _ImageModeSelector(state: state),
+                        const SizedBox(height: 12),
+                        Text(
+                          isEditMode
+                              ? '上传或选择参考图，再用提示词描述你希望怎么改。'
+                              : '使用文字描述直接生成图片。',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-              if (isEditMode) ...[
-                const SizedBox(height: 16),
-                SectionLabel('参考图'),
-                UtilityPanel(
-                  child: _ImageReferenceSection(
-                    state: state,
-                    onAdd: () => _openReferencePicker(context, state),
                   ),
-                ),
-              ],
-              const SizedBox(height: 16),
-              SectionLabel('描述'),
-              UtilityPanel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Prompt', style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _promptController,
-                      minLines: 4,
-                      maxLines: 7,
-                      onChanged: state.updateImagePrompt,
-                      decoration: InputDecoration(
-                        hintText: isEditMode
-                            ? '描述你要如何修改参考图，比如替换背景、改服装、变风格。'
-                            : '描述主体、风格、镜头、构图、光线、材质和氛围。',
+                  if (isEditMode) ...[
+                    const SizedBox(height: 16),
+                    SectionLabel('参考图'),
+                    UtilityPanel(
+                      child: _ImageReferenceSection(
+                        state: state,
+                        onAdd: () => _openReferencePicker(context, state),
                       ),
                     ),
                   ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              SectionLabel('参数'),
-              UtilityPanel(
-                child: Column(
-                  children: [
-                    _DropdownRow<String>(
-                      label: '比例',
-                      value: state.imageMetadata.aspectRatio,
-                      items: const ['1:1', '4:3', '16:9', '9:16'],
-                      onChanged: (v) {
-                        state.updateImageMetadata(
-                          (current) => current.copyWith(aspectRatio: v),
-                        );
-                      },
-                    ),
-                    const PanelDivider(),
-                    _DropdownRow<String>(
-                      label: '质量',
-                      value: state.imageMetadata.quality,
-                      items: const ['low', 'medium', 'high'],
-                      onChanged: (v) {
-                        state.updateImageMetadata(
-                          (current) => current.copyWith(quality: v),
-                        );
-                      },
-                    ),
-                    const PanelDivider(),
-                    _DropdownRow<String>(
-                      label: '张数',
-                      value: '${state.imageMetadata.numImages}',
-                      items: const ['1', '2', '3', '4'],
-                      onChanged: (v) {
-                        state.updateImageMetadata(
-                          (current) =>
-                              current.copyWith(numImages: int.tryParse(v) ?? 1),
-                        );
-                      },
-                    ),
-                    const PanelDivider(),
-                    _DropdownRow<String>(
-                      label: '输出格式',
-                      value: state.imageMetadata.outputFormat,
-                      items: const ['png', 'jpeg', 'webp'],
-                      onChanged: (v) {
-                        state.updateImageMetadata(
-                          (current) => current.copyWith(outputFormat: v),
-                        );
-                      },
-                    ),
-                    const PanelDivider(),
-                    _DropdownRow<String>(
-                      label: '分类',
-                      value: state.imageMetadata.category,
-                      items: ['', ...state.categories],
-                      displayItems: ['(默认)', ...state.categories],
-                      onChanged: (v) {
-                        state.updateImageMetadata(
-                          (current) => current.copyWith(category: v),
-                        );
-                      },
-                    ),
-                    const PanelDivider(),
-                    _DropdownRow<AttachmentRole>(
-                      label: '入库角色',
-                      value: state.imageMetadata.role,
-                      items: const [
-                        AttachmentRole.referenceImage,
-                        AttachmentRole.firstFrame,
-                        AttachmentRole.lastFrame,
+                  const SizedBox(height: 16),
+                  SectionLabel('描述'),
+                  UtilityPanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _ImagePromptHeader(
+                          actionLabel: state.imagePrompt.isEmpty ? null : '清空',
+                          onTap: state.imagePrompt.isEmpty
+                              ? null
+                              : () => _clearImagePrompt(context, state),
+                        ),
+                        TextField(
+                          controller: _promptController,
+                          minLines: 4,
+                          maxLines: 7,
+                          onChanged: state.updateImagePrompt,
+                          decoration: InputDecoration(
+                            hintText: isEditMode
+                                ? '描述你要如何修改参考图，比如替换背景、改服装、变风格。'
+                                : '描述主体、风格、镜头、构图、光线、材质和氛围。',
+                          ),
+                        ),
                       ],
-                      displayItems: const ['参考图', '首帧图', '尾帧图'],
-                      onChanged: (v) {
-                        state.updateImageMetadata(
-                          (current) => current.copyWith(role: v),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              SectionLabel('高级与预览'),
-              _ImagePreviewDisclosureCard(
-                title: '请求预览',
-                subtitle: '提交前查看当前会调用的图片工具和参数。',
-                child: _ImageRequestPreviewCard(state: state),
-              ),
-              const SizedBox(height: 16),
-              _ImageSubmitPanel(
-                state: state,
-                onSubmit:
-                    state.imagePrompt.trim().isNotEmpty &&
-                        !state.isSubmittingImageTask
-                    ? () => _submitImageTask(context, state)
-                    : null,
-              ),
-              if (state.imageSubmitErrorMessage != null) ...[
-                const SizedBox(height: 16),
-                SectionLabel('提交失败'),
-                UtilityPanel(
-                  child: UtilityTile(
-                    title: state.imageSubmitErrorMessage!,
-                    subtitle: '任务没有被创建，也不会产生扣费执行记录。',
-                    trailing: Icon(
-                      Icons.error_outline_rounded,
-                      color: theme.colorScheme.error,
-                      size: 18,
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  SectionLabel('参数'),
+                  UtilityPanel(
+                    child: Column(
+                      children: [
+                        _DropdownRow<String>(
+                          label: '比例',
+                          value: state.imageMetadata.aspectRatio,
+                          items: const ['1:1', '4:3', '16:9', '9:16'],
+                          onChanged: (v) {
+                            state.updateImageMetadata(
+                              (current) => current.copyWith(aspectRatio: v),
+                            );
+                          },
+                        ),
+                        const PanelDivider(),
+                        _DropdownRow<String>(
+                          label: '质量',
+                          value: state.imageMetadata.quality,
+                          items: const ['low', 'medium', 'high'],
+                          onChanged: (v) {
+                            state.updateImageMetadata(
+                              (current) => current.copyWith(quality: v),
+                            );
+                          },
+                        ),
+                        const PanelDivider(),
+                        _DropdownRow<String>(
+                          label: '张数',
+                          value: '${state.imageMetadata.numImages}',
+                          items: const ['1', '2', '3', '4'],
+                          onChanged: (v) {
+                            state.updateImageMetadata(
+                              (current) => current.copyWith(
+                                numImages: int.tryParse(v) ?? 1,
+                              ),
+                            );
+                          },
+                        ),
+                        const PanelDivider(),
+                        _DropdownRow<String>(
+                          label: '输出格式',
+                          value: state.imageMetadata.outputFormat,
+                          items: const ['png', 'jpeg', 'webp'],
+                          onChanged: (v) {
+                            state.updateImageMetadata(
+                              (current) => current.copyWith(outputFormat: v),
+                            );
+                          },
+                        ),
+                        const PanelDivider(),
+                        _DropdownRow<String>(
+                          label: '分类',
+                          value: state.imageMetadata.category,
+                          items: ['', ...state.categories],
+                          displayItems: ['(默认)', ...state.categories],
+                          onChanged: (v) {
+                            state.updateImageMetadata(
+                              (current) => current.copyWith(category: v),
+                            );
+                          },
+                        ),
+                        const PanelDivider(),
+                        _DropdownRow<AttachmentRole>(
+                          label: '入库角色',
+                          value: state.imageMetadata.role,
+                          items: const [
+                            AttachmentRole.referenceImage,
+                            AttachmentRole.firstFrame,
+                            AttachmentRole.lastFrame,
+                          ],
+                          displayItems: const ['参考图', '首帧图', '尾帧图'],
+                          onChanged: (v) {
+                            state.updateImageMetadata(
+                              (current) => current.copyWith(role: v),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SectionLabel('高级与预览'),
+                  _ImagePreviewDisclosureCard(
+                    title: '请求预览',
+                    subtitle: '提交前查看当前会调用的图片工具和参数。',
+                    child: _ImageRequestPreviewCard(state: state),
+                  ),
+                  if (state.imageSubmitErrorMessage != null) ...[
+                    const SizedBox(height: 16),
+                    SectionLabel('提交失败'),
+                    UtilityPanel(
+                      child: UtilityTile(
+                        title: state.imageSubmitErrorMessage!,
+                        subtitle: '任务没有被创建，也不会产生扣费执行记录。',
+                        trailing: Icon(
+                          Icons.error_outline_rounded,
+                          color: theme.colorScheme.error,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              if (!keyboardOpen)
+                Positioned(
+                  right: 20,
+                  bottom: 16,
+                  child: FloatingSubmitBar(
+                    resolution: state.imageToolResolution,
+                    label: '提交',
+                    submitting: state.isSubmittingImageTask,
+                    onPressed: canSubmit
+                        ? () => _submitImageTask(context, state)
+                        : null,
+                  ),
                 ),
-              ],
             ],
           ),
         ),
@@ -232,6 +246,19 @@ class _ImageCreatePageState extends State<ImageCreatePage> {
     }
   }
 
+  Future<void> _clearImagePrompt(BuildContext context, AppState state) async {
+    final confirmed = await confirmAction(
+      context,
+      title: '清空内容？',
+      message: '当前图片提示词会被清空。',
+      confirmLabel: '清空',
+      destructive: true,
+    );
+    if (!confirmed) return;
+    state.updateImagePrompt('');
+    _promptController.clear();
+  }
+
   Future<void> _submitImageTask(BuildContext context, AppState state) async {
     final submitted = await state.submitImageTask();
     if (!context.mounted) return;
@@ -240,6 +267,10 @@ class _ImageCreatePageState extends State<ImageCreatePage> {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(const SnackBar(content: Text('图片任务已提交')));
+      final navigator = Navigator.of(context);
+      if (navigator.canPop()) {
+        navigator.pop();
+      }
     } else {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -262,6 +293,15 @@ class _ImageCreatePageState extends State<ImageCreatePage> {
     );
     if (picked == null) return;
     state.addImageReferenceAttachment(picked.id);
+  }
+
+  void _ensureImageToolResolution(AppState state) {
+    if (!state.isAgentEarthConfigured) return;
+    if (state.imageToolResolution.status != ToolResolutionStatus.idle) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      state.resolveImageTool();
+    });
   }
 }
 
@@ -290,6 +330,38 @@ class _ImageModeSelector extends StatelessWidget {
         state.setActiveImageMode(selected.first);
       },
       emptySelectionAllowed: false,
+    );
+  }
+}
+
+class _ImagePromptHeader extends StatelessWidget {
+  const _ImagePromptHeader({this.actionLabel, this.onTap});
+
+  final String? actionLabel;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Prompt',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          if (actionLabel != null)
+            Tooltip(
+              message: actionLabel!,
+              child: IconButton(
+                onPressed: onTap,
+                icon: const Icon(Icons.clear_rounded, size: 18),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -359,51 +431,10 @@ class _ImageReferenceSection extends StatelessWidget {
                   label: Text(attachments.isEmpty ? '选择参考图' : '继续添加参考图'),
                 ),
               ),
-              const SizedBox(height: 14),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final compact = constraints.maxWidth < 360;
-                  final items = [
-                    _ReferenceStepTile(
-                      icon: Icons.filter_1_rounded,
-                      label: '选择参考图',
-                      description: attachments.isEmpty ? '待完成' : '已完成',
-                      active: attachments.isNotEmpty,
-                    ),
-                    _ReferenceStepTile(
-                      icon: Icons.edit_note_rounded,
-                      label: '写修改指令',
-                      description: hasPrompt ? '已填写' : '下一步',
-                      active: hasPrompt,
-                    ),
-                    _ReferenceStepTile(
-                      icon: Icons.send_rounded,
-                      label: '提交生成',
-                      description: attachments.isNotEmpty && hasPrompt
-                          ? '可以提交'
-                          : '最后一步',
-                      active: attachments.isNotEmpty && hasPrompt,
-                    ),
-                  ];
-                  if (compact) {
-                    return Column(
-                      children: [
-                        for (var i = 0; i < items.length; i++) ...[
-                          items[i],
-                          if (i != items.length - 1) const SizedBox(height: 8),
-                        ],
-                      ],
-                    );
-                  }
-                  return Row(
-                    children: [
-                      for (var i = 0; i < items.length; i++) ...[
-                        Expanded(child: items[i]),
-                        if (i != items.length - 1) const SizedBox(width: 8),
-                      ],
-                    ],
-                  );
-                },
+              const SizedBox(height: 12),
+              _ReferenceFlowHint(
+                hasReference: attachments.isNotEmpty,
+                hasPrompt: hasPrompt,
               ),
             ],
           ),
@@ -525,70 +556,108 @@ class _ImageReferenceCard extends StatelessWidget {
   }
 }
 
-class _ReferenceStepTile extends StatelessWidget {
-  const _ReferenceStepTile({
-    required this.icon,
+class _ReferenceFlowHint extends StatelessWidget {
+  const _ReferenceFlowHint({
+    required this.hasReference,
+    required this.hasPrompt,
+  });
+
+  final bool hasReference;
+  final bool hasPrompt;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 6,
+      children: [
+        Text(
+          '参考流程',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        _ReferenceFlowStep(index: 1, label: '选图', active: hasReference),
+        _FlowSeparator(active: hasReference),
+        _ReferenceFlowStep(index: 2, label: '写提示词', active: hasPrompt),
+        _FlowSeparator(active: hasReference && hasPrompt),
+        _ReferenceFlowStep(
+          index: 3,
+          label: '提交',
+          active: hasReference && hasPrompt,
+        ),
+      ],
+    );
+  }
+}
+
+class _ReferenceFlowStep extends StatelessWidget {
+  const _ReferenceFlowStep({
+    required this.index,
     required this.label,
-    required this.description,
     required this.active,
   });
 
-  final IconData icon;
+  final int index;
   final String label;
-  final String description;
   final bool active;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: active
-            ? colorScheme.primaryContainer.withValues(alpha: 0.9)
-            : colorScheme.surface,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: active
-              ? colorScheme.primary.withValues(alpha: 0.18)
-              : colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            size: 16,
-            color: active ? colorScheme.primary : colorScheme.onSurfaceVariant,
+    final color = active ? colorScheme.primary : colorScheme.onSurfaceVariant;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 18,
+          height: 18,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: active
+                ? colorScheme.primary.withValues(alpha: 0.12)
+                : colorScheme.surfaceContainerHighest,
+            shape: BoxShape.circle,
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: active ? colorScheme.primary : colorScheme.onSurface,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  description,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
+          child: Text(
+            '$index',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w800,
+              height: 1,
             ),
           ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: color,
+            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FlowSeparator extends StatelessWidget {
+  const _FlowSeparator({required this.active});
+
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Icon(
+      Icons.chevron_right_rounded,
+      size: 15,
+      color: active
+          ? colorScheme.primary.withValues(alpha: 0.72)
+          : colorScheme.onSurfaceVariant.withValues(alpha: 0.48),
     );
   }
 }
@@ -616,33 +685,6 @@ class _ReferenceUseCaseChip extends StatelessWidget {
           context,
         ).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
       ),
-    );
-  }
-}
-
-class _ImageSubmitCluster extends StatelessWidget {
-  const _ImageSubmitCluster({required this.state, required this.onSubmit});
-
-  final AppState state;
-  final VoidCallback? onSubmit;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        CreditBadge(resolution: state.imageToolResolution),
-        const SizedBox(height: 8),
-        ToolIconButton(
-          tooltip: state.isSubmittingImageTask ? '提交中' : '生成并入库',
-          icon: state.isSubmittingImageTask
-              ? Icons.more_horiz_rounded
-              : Icons.arrow_upward_rounded,
-          emphasized: true,
-          onPressed: onSubmit,
-        ),
-      ],
     );
   }
 }
@@ -774,50 +816,6 @@ class _ImagePreviewDisclosureCardState
                 ? CrossFadeState.showSecond
                 : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 180),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ImageSubmitPanel extends StatelessWidget {
-  const _ImageSubmitPanel({required this.state, required this.onSubmit});
-
-  final AppState state;
-  final VoidCallback? onSubmit;
-
-  @override
-  Widget build(BuildContext context) {
-    final tool = state.imageToolResolution.tool;
-    final creditText =
-        state.imageToolResolution.status == ToolResolutionStatus.ready &&
-            tool != null
-        ? '本次工具积分：${tool.credit} credits'
-        : '获取到 AgentEarth 工具积分后会在这里显示';
-
-    return UtilityPanel(
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              creditText,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color:
-                    state.imageToolResolution.status ==
-                        ToolResolutionStatus.ready
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          CapsuleButton(
-            label: state.isSubmittingImageTask ? '提交中...' : '生成并入库',
-            icon: Icons.arrow_upward_rounded,
-            emphasized: true,
-            onPressed: onSubmit,
           ),
         ],
       ),

@@ -368,6 +368,115 @@ class CreditBadge extends StatelessWidget {
   }
 }
 
+class FloatingSubmitBar extends StatelessWidget {
+  const FloatingSubmitBar({
+    super.key,
+    required this.resolution,
+    required this.label,
+    required this.submitting,
+    this.onPressed,
+  });
+
+  final ToolResolution resolution;
+  final String label;
+  final bool submitting;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final tool = resolution.tool;
+    final creditLabel = switch (resolution.status) {
+      ToolResolutionStatus.ready when tool != null => '${tool.credit}',
+      ToolResolutionStatus.loading => '获取中',
+      ToolResolutionStatus.error => '--',
+      _ => '--',
+    };
+    final enabled = onPressed != null;
+    final foreground = enabled
+        ? colorScheme.primary
+        : colorScheme.onSurfaceVariant;
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 220),
+      child: Material(
+        color: colorScheme.surface,
+        elevation: 2,
+        shadowColor: Colors.black.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+            color: enabled
+                ? colorScheme.primary.withValues(alpha: 0.22)
+                : colorScheme.outlineVariant.withValues(alpha: 0.68),
+          ),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onPressed,
+          child: SizedBox(
+            height: 44,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.bolt_rounded, size: 16, color: foreground),
+                  const SizedBox(width: 5),
+                  Text(
+                    creditLabel,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: foreground,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Container(
+                    width: 1,
+                    height: 18,
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.82),
+                  ),
+                  const SizedBox(width: 10),
+                  if (submitting) ...[
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(foreground),
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                  ] else ...[
+                    Icon(
+                      Icons.arrow_upward_rounded,
+                      size: 16,
+                      color: foreground,
+                    ),
+                    const SizedBox(width: 5),
+                  ],
+                  Flexible(
+                    child: Text(
+                      submitting ? '提交中' : label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: foreground,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class StatusPill extends StatelessWidget {
   const StatusPill({
     super.key,
