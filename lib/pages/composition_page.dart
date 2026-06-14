@@ -872,7 +872,9 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
       setState(() {
         _ready = true;
       });
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('Composition preview failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
       if (!mounted) return;
       setState(() {
         _ready = false;
