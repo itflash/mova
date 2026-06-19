@@ -6,6 +6,7 @@ import '../app/app_scope.dart';
 import '../app/app_state.dart';
 import '../app/mock_data.dart';
 import '../app/models.dart';
+import '../widgets/app_segmented_control.dart';
 import 'home_shell.dart';
 import 'video_frame_capture_page.dart';
 import '../widgets/attachment_media.dart';
@@ -846,28 +847,15 @@ class _ModeSelector extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(
-              color: colorScheme.outlineVariant.withValues(alpha: 0.48),
-            ),
-          ),
-          child: Row(
-            children: modes
-                .map(
-                  (mode) => Expanded(
-                    child: _ModeOptionTab(
-                      label: _tabLabelForMode(mode.id),
-                      selected: mode.id == selectedMode,
-                      onTap: () => onChanged(mode.id),
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
+        AppSegmentedControl<ModeId>(
+          segments: modes
+              .map((mode) => AppSegment<ModeId>(
+                    value: mode.id,
+                    label: _tabLabelForMode(mode.id),
+                  ))
+              .toList(),
+          selected: selectedMode,
+          onChanged: onChanged,
         ),
         const SizedBox(height: 10),
         AnimatedSwitcher(
@@ -918,64 +906,6 @@ class _ModeSelector extends StatelessWidget {
   }
 }
 
-class _ModeOptionTab extends StatelessWidget {
-  const _ModeOptionTab({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final selectedBackground =
-        Color.lerp(colorScheme.primaryContainer, Colors.white, 0.18) ??
-        colorScheme.primaryContainer;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
-            height: 38,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: selected ? selectedBackground : Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: selected
-                    ? colorScheme.primary.withValues(alpha: 0.2)
-                    : Colors.transparent,
-              ),
-            ),
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: selected
-                    ? colorScheme.primary
-                    : colorScheme.onSurfaceVariant,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                height: 1.0,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 String _tabLabelForMode(ModeId mode) => switch (mode) {
   ModeId.text => '文本',

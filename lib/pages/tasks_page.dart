@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
 import '../app/spacing.dart';
+import '../widgets/app_segmented_control.dart';
 import 'package:video_player/video_player.dart';
 
 import '../app/app_scope.dart';
@@ -422,20 +423,20 @@ class _TaskFilterBar extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: _TaskFilterGroup<TaskTab>(
-            selected: activeTab,
-            options: const [
-              _TaskFilterOption(
+          child: AppSegmentedControl<TaskTab>(
+            segments: const [
+              AppSegment(
                 value: TaskTab.video,
                 icon: Icons.movie_creation_outlined,
                 label: '视频',
               ),
-              _TaskFilterOption(
+              AppSegment(
                 value: TaskTab.image,
                 icon: Icons.image_outlined,
                 label: '图片',
               ),
             ],
+            selected: activeTab,
             onChanged: onTabChanged,
           ),
         ),
@@ -448,119 +449,6 @@ class _TaskFilterBar extends StatelessWidget {
     );
   }
 }
-
-class _TaskFilterOption<T> {
-  const _TaskFilterOption({
-    required this.value,
-    required this.icon,
-    required this.label,
-  });
-
-  final T value;
-  final IconData icon;
-  final String label;
-}
-
-class _TaskFilterGroup<T> extends StatelessWidget {
-  const _TaskFilterGroup({
-    required this.selected,
-    required this.options,
-    required this.onChanged,
-  });
-
-  final T selected;
-  final List<_TaskFilterOption<T>> options;
-  final ValueChanged<T> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.58),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
-      child: Row(
-        children: [
-          for (final option in options)
-            Expanded(
-              child: _TaskFilterChip<T>(
-                option: option,
-                selected: option.value == selected,
-                onTap: () => onChanged(option.value),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TaskFilterChip<T> extends StatelessWidget {
-  const _TaskFilterChip({
-    required this.option,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final _TaskFilterOption<T> option;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final foreground = selected
-        ? colorScheme.primary
-        : colorScheme.onSurfaceVariant;
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: option.label,
-      child: Material(
-        color: selected
-            ? colorScheme.primary.withValues(alpha: 0.12)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(AppRadius.control),
-        child: InkWell(
-          onTap: selected ? null : onTap,
-          borderRadius: BorderRadius.circular(AppRadius.control),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOut,
-            height: 36,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(option.icon, size: 17, color: foreground),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    option.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: foreground,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _TaskArchiveMenu extends StatelessWidget {
   const _TaskArchiveMenu({
     required this.showArchivedTasks,

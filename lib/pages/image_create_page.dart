@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/app_segmented_control.dart';
 import '../app/spacing.dart';
 
 import '../app/app_scope.dart';
@@ -344,24 +345,21 @@ class _ImageModeSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SegmentedButton<ImageCreateMode>(
+    return AppSegmentedControl<ImageCreateMode>(
       segments: const [
-        ButtonSegment<ImageCreateMode>(
+        AppSegment(
           value: ImageCreateMode.textToImage,
-          label: Text('文生图'),
-          icon: Icon(Icons.auto_awesome_outlined, size: 18),
+          icon: Icons.auto_awesome_outlined,
+          label: '文生图',
         ),
-        ButtonSegment<ImageCreateMode>(
+        AppSegment(
           value: ImageCreateMode.imageToImage,
-          label: Text('图生图'),
-          icon: Icon(Icons.draw_outlined, size: 18),
+          icon: Icons.draw_outlined,
+          label: '图生图',
         ),
       ],
-      selected: {state.activeImageMode},
-      onSelectionChanged: (selected) {
-        state.setActiveImageMode(selected.first);
-      },
-      emptySelectionAllowed: false,
+      selected: state.activeImageMode,
+      onChanged: state.setActiveImageMode,
     );
   }
 }
