@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app/spacing.dart';
 
 import '../app/app_state.dart';
 import '../app/mock_data.dart';
@@ -193,10 +194,10 @@ class _AttachmentPickerCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Material(
-      color: const Color(0xFFF5F6FA),
-      borderRadius: BorderRadius.circular(24),
+      color: colorScheme.surface,
+      borderRadius: BorderRadius.circular(AppRadius.card),
       child: InkWell(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(10),

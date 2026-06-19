@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
+import '../app/spacing.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:video_player/video_player.dart';
 
@@ -411,7 +412,7 @@ class _ZoomableAttachmentImageState extends State<_ZoomableAttachmentImage> {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(AppRadius.card),
       child: AspectRatio(
         aspectRatio: 1,
         child: _ResolvedAttachmentPhotoView(
@@ -568,7 +569,7 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
         height: 280,
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         child: const Center(child: CircularProgressIndicator()),
       );
@@ -581,7 +582,7 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
     }
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(AppRadius.card),
       child: ColoredBox(
         color: Colors.black,
         child: AspectRatio(
@@ -1045,7 +1046,7 @@ class _PreviewFallback extends StatelessWidget {
       height: 280,
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app/spacing.dart';
 
 import '../app/app_scope.dart';
 import '../app/app_state.dart';
@@ -98,16 +99,33 @@ class _ImageCreatePageState extends State<ImageCreatePage> {
                               ? null
                               : () => _clearImagePrompt(context, state),
                         ),
-                        TextField(
-                          controller: _promptController,
-                          minLines: 4,
-                          maxLines: 7,
-                          onChanged: state.updateImagePrompt,
-                          decoration: InputDecoration(
-                            hintText: isEditMode
-                                ? '描述你要如何修改参考图，比如替换背景、改服装、变风格。'
-                                : '描述主体、风格、镜头、构图、光线、材质和氛围。',
-                          ),
+                        Stack(
+                          children: [
+                            TextField(
+                              controller: _promptController,
+                              minLines: 4,
+                              maxLines: 7,
+                              onChanged: state.updateImagePrompt,
+                              decoration: InputDecoration(
+                                hintText: isEditMode
+                                    ? '描述你要如何修改参考图，比如替换背景、改服装、变风格。'
+                                    : '描述主体、风格、镜头、构图、光线、材质和氛围。',
+                                counterText: '',
+                              ),
+                            ),
+                            Positioned(
+                              right: 12,
+                              bottom: 8,
+                              child: Text(
+                                '${state.imagePrompt.length}/2000',
+                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  color: state.imagePrompt.length > 2000
+                                      ? Theme.of(context).colorScheme.error
+                                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -217,10 +235,11 @@ class _ImageCreatePageState extends State<ImageCreatePage> {
                   ],
                 ],
               ),
-              if (!keyboardOpen)
-                Positioned(
+              Positioned(
                   right: 20,
-                  bottom: 16,
+                  bottom: keyboardOpen
+                      ? MediaQuery.of(context).viewInsets.bottom + 12
+                      : 16,
                   child: FloatingSubmitBar(
                     resolution: state.imageToolResolution,
                     label: '提交',
@@ -448,7 +467,7 @@ class _ImageReferenceSection extends StatelessWidget {
                   color: colorScheme.outlineVariant.withValues(alpha: 0.8),
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                 ),
               ),
               icon: Icon(
@@ -527,7 +546,7 @@ class _ImageReferenceCard extends StatelessWidget {
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
                   color: colorScheme.surface,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(
                     color: colorScheme.outlineVariant.withValues(alpha: 0.72),
                   ),
@@ -753,7 +772,7 @@ class _ImagePreviewDisclosureCardState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           InkWell(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppRadius.control),
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
@@ -835,7 +854,7 @@ class _DropdownRow<T> extends StatelessWidget {
                 isExpanded: true,
                 alignment: Alignment.centerRight,
                 value: value,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(AppRadius.card),
                 items: List.generate(items.length, (i) {
                   final label = displayItems != null
                       ? displayItems![i]

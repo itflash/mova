@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app/spacing.dart';
 import 'package:video_player/video_player.dart';
 
 import '../app/app_scope.dart';
@@ -128,21 +129,38 @@ class _CreatePageState extends State<CreatePage> {
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     const SizedBox(height: 14),
-                    TextField(
-                      controller: _promptController,
-                      minLines: 6,
-                      maxLines: 9,
-                      onChanged: (value) {
-                        _applyPromptChange(state, value);
-                      },
-                      onTap: () => _inspectMention(state),
-                      decoration: InputDecoration(
-                        hintText: state.activeMode == ModeId.text
-                            ? '描述镜头、动作和氛围。'
-                            : state.supportsPromptMentions
-                            ? '描述镜头、动作和氛围，也可以输入 @ 插入素材标签。'
-                            : '描述从首帧到尾帧之间的动作、镜头和氛围。',
-                      ),
+                    Stack(
+                      children: [
+                        TextField(
+                          controller: _promptController,
+                          minLines: 6,
+                          maxLines: 9,
+                          onChanged: (value) {
+                            _applyPromptChange(state, value);
+                          },
+                          onTap: () => _inspectMention(state),
+                          decoration: InputDecoration(
+                            hintText: state.activeMode == ModeId.text
+                                ? '描述镜头、动作和氛围。'
+                                : state.supportsPromptMentions
+                                ? '描述镜头、动作和氛围，也可以输入 @ 插入素材标签。'
+                                : '描述从首帧到尾帧之间的动作、镜头和氛围。',
+                            counterText: '',
+                          ),
+                        ),
+                        Positioned(
+                          right: 12,
+                          bottom: 8,
+                          child: Text(
+                            '${state.prompt.length}/5000',
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: state.prompt.length > 5000
+                                  ? Theme.of(context).colorScheme.error
+                                  : Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     if (state.supportsPromptMentions) ...[
                       const SizedBox(height: 14),
@@ -196,7 +214,7 @@ class _CreatePageState extends State<CreatePage> {
                             isExpanded: true,
                             alignment: Alignment.centerRight,
                             value: state.metadata.resolution,
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(AppRadius.card),
                             items: const [
                               DropdownMenuItem(
                                 value: '480p',
@@ -206,10 +224,7 @@ class _CreatePageState extends State<CreatePage> {
                                 value: '720p',
                                 child: Text('720p'),
                               ),
-                              DropdownMenuItem(
-                                value: '1080p',
-                                child: Text('1080p'),
-                              ),
+
                             ],
                             onChanged: (value) {
                               if (value == null) return;
@@ -232,7 +247,7 @@ class _CreatePageState extends State<CreatePage> {
                             isExpanded: true,
                             alignment: Alignment.centerRight,
                             value: state.metadata.ratio,
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(AppRadius.card),
                             items: const [
                               DropdownMenuItem(
                                 value: '16:9',
@@ -357,10 +372,11 @@ class _CreatePageState extends State<CreatePage> {
               ],
             ],
           ),
-          if (!keyboardOpen)
             Positioned(
               right: 20,
-              bottom: 16,
+              bottom: keyboardOpen
+                  ? MediaQuery.of(context).viewInsets.bottom + 12
+                  : 16,
               child: FloatingSubmitBar(
                 resolution: state.activeToolResolution,
                 label: '提交',
@@ -829,7 +845,7 @@ class _ModeSelector extends StatelessWidget {
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
             color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppRadius.card),
             border: Border.all(
               color: colorScheme.outlineVariant.withValues(alpha: 0.48),
             ),
@@ -857,7 +873,7 @@ class _ModeSelector extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 11, 12, 10),
             decoration: BoxDecoration(
               color: colorScheme.surface,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadius.card),
               border: Border.all(
                 color: colorScheme.outlineVariant.withValues(alpha: 0.52),
               ),
@@ -1063,7 +1079,7 @@ class _VideoFrameSlots extends StatelessWidget {
         title: '首帧素材',
         subtitle: '决定视频从哪一帧开始。',
         attachment: state.selectedFirstFrameAttachment,
-        accentColor: const Color(0xFF2F80ED),
+        accentColor: const Color(0xFF5856F6),
         pickLabel: '选择首帧',
         onPick: onPickFirstFrame,
         onCapture: onCaptureFirstFrame,
@@ -1082,7 +1098,7 @@ class _VideoFrameSlots extends StatelessWidget {
           title: '尾帧素材',
           subtitle: '决定视频收束到哪一帧。',
           attachment: state.selectedLastFrameAttachment,
-          accentColor: const Color(0xFF159957),
+          accentColor: const Color(0xFF0A8E8E),
           pickLabel: '选择尾帧',
           onPick: onPickLastFrame,
           onCapture: onCaptureLastFrame,
@@ -1149,7 +1165,7 @@ class _VideoFrameSlotCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(
           color: hasAttachment
               ? accentColor.withValues(alpha: 0.22)
@@ -1188,7 +1204,7 @@ class _VideoFrameSlotCard extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: accentColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
                   ),
                   child: Text(
                     '已选择',
@@ -1204,13 +1220,13 @@ class _VideoFrameSlotCard extends StatelessWidget {
           const SizedBox(height: 14),
           if (hasAttachment)
             InkWell(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(AppRadius.card),
               onTap: onPreview,
               child: Ink(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: colorScheme.surface,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(
                     color: accentColor.withValues(alpha: 0.18),
                   ),
@@ -1284,7 +1300,7 @@ class _VideoFrameSlotCard extends StatelessWidget {
                     vertical: 12,
                   ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.card),
                   ),
                 ),
               ),
@@ -1300,7 +1316,7 @@ class _VideoFrameSlotCard extends StatelessWidget {
                   ),
                   side: BorderSide(color: accentColor.withValues(alpha: 0.28)),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.card),
                   ),
                 ),
               ),
@@ -1335,14 +1351,14 @@ class _SelectedAttachmentCard extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         onTap: onPreview,
         child: Ink(
           width: 112,
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
           decoration: BoxDecoration(
             color: colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(AppRadius.card),
             border: Border.all(
               color: colorScheme.outlineVariant.withValues(alpha: 0.55),
             ),
@@ -1371,8 +1387,8 @@ class _SelectedAttachmentCard extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: colorScheme.surface,
                           shape: BoxShape.circle,
-                          boxShadow: const [
-                            BoxShadow(blurRadius: 10, color: Color(0x22000000)),
+                          boxShadow: [
+                            BoxShadow(blurRadius: 10, color: colorScheme.shadow),
                           ],
                         ),
                         child: Icon(

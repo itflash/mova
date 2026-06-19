@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app/spacing.dart';
 
 import '../app/app_scope.dart';
 import '../app/mock_data.dart';
@@ -214,7 +215,7 @@ class _CategoryTile extends StatelessWidget {
       button: true,
       label: '分类 $category，点按编辑，长按删除',
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         onTap: () => CategoryManagementPage._openCategoryEditor(
           context,
           title: '修改分类',
@@ -268,7 +269,7 @@ class _CategoryTile extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
                   ),
                   child: Text(
                     '$count',

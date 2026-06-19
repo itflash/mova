@@ -422,6 +422,9 @@ class AppState extends ChangeNotifier {
     if (effectiveVideoPrompt.trim().isEmpty) {
       messages.add('Prompt 不能为空。');
     }
+    if (effectiveVideoPrompt.length > 5000) {
+      messages.add('Prompt 不能超过 5000 字符。');
+    }
 
     if (activeMode == ModeId.text && selectedAttachments.isNotEmpty) {
       messages.add('文本生视频模式不接收素材。');
@@ -1434,6 +1437,8 @@ class AppState extends ChangeNotifier {
         ),
       );
       currentTab = AppTab.tasks;
+      activeTaskTab = TaskTab.video;
+      showArchivedTasks = false;
       isSubmitting = false;
       notifyListeners();
       if (settings.autoPoll) {
@@ -1497,6 +1502,11 @@ class AppState extends ChangeNotifier {
     }
     if (imagePrompt.trim().isEmpty) {
       imageSubmitErrorMessage = 'Prompt 不能为空。';
+      notifyListeners();
+      return false;
+    }
+    if (imagePrompt.length > 2000) {
+      imageSubmitErrorMessage = 'Prompt 不能超过 5000 字符。';
       notifyListeners();
       return false;
     }
@@ -1574,6 +1584,7 @@ class AppState extends ChangeNotifier {
 
       currentTab = AppTab.tasks;
       activeTaskTab = TaskTab.image;
+      showArchivedTasks = false;
       isSubmittingImageTask = false;
       notifyListeners();
 

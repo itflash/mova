@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app/app_scope.dart';
+import '../app/spacing.dart';
 import '../app/models.dart';
 import 'composition_page.dart';
 import 'create_page.dart';
@@ -24,32 +25,14 @@ class HomeShell extends StatelessWidget {
     };
 
     return Scaffold(
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFF7F8FC), Color(0xFFF1F2F6)],
+      body: SafeArea(
+        bottom: false,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          child: KeyedSubtree(
+            key: ValueKey(state.currentTab),
+            child: pages[state.currentTab]!,
           ),
-        ),
-        child: Stack(
-          children: [
-            const _BackgroundGlow(
-              alignment: Alignment.topCenter,
-              color: Color(0x26DDEBFF),
-              size: 320,
-            ),
-            SafeArea(
-              bottom: false,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                child: KeyedSubtree(
-                  key: ValueKey(state.currentTab),
-                  child: pages[state.currentTab]!,
-                ),
-              ),
-            ),
-          ],
         ),
       ),
       bottomNavigationBar: SafeArea(
@@ -159,13 +142,13 @@ class UtilityPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadius.card),
       child: Material(
         color: colorScheme.surface,
-        shadowColor: const Color(0x0F101828),
-        elevation: 0.5,
+        shadowColor: colorScheme.shadow,
+        elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           side: BorderSide(
             color: colorScheme.outlineVariant.withValues(alpha: 0.55),
           ),
@@ -271,7 +254,7 @@ class CapsuleButton extends StatelessWidget {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
         textStyle: Theme.of(context).textTheme.labelLarge,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.control)),
       ),
       icon: icon == null ? const SizedBox.shrink() : Icon(icon, size: 18),
       label: Text(label),
@@ -315,7 +298,7 @@ class ToolIconButton extends StatelessWidget {
           fixedSize: const Size(36, 36),
           padding: EdgeInsets.zero,
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.control)),
         ),
         icon: Icon(icon, size: 19),
       ),
@@ -349,7 +332,7 @@ class CreditBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(99),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
         border: Border.all(color: color.withValues(alpha: 0.22)),
       ),
       child: Row(
@@ -406,7 +389,7 @@ class FloatingSubmitBar extends StatelessWidget {
         elevation: 2,
         shadowColor: Colors.black.withValues(alpha: 0.10),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           side: BorderSide(
             color: enabled
                 ? colorScheme.primary.withValues(alpha: 0.22)
@@ -414,7 +397,7 @@ class FloatingSubmitBar extends StatelessWidget {
           ),
         ),
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           onTap: onPressed,
           child: SizedBox(
             height: 44,
@@ -558,7 +541,7 @@ Future<bool> confirmAction(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
                 decoration: BoxDecoration(
                   color: colorScheme.surface,
-                  borderRadius: BorderRadius.circular(30),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(
                     color: colorScheme.outlineVariant.withValues(alpha: 0.5),
                   ),
@@ -643,7 +626,7 @@ Future<bool> confirmAction(
                             ? colorScheme.onError
                             : colorScheme.onPrimary,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: BorderRadius.circular(AppRadius.control),
                         ),
                       ),
                       child: Text(confirmLabel),
@@ -655,7 +638,7 @@ Future<bool> confirmAction(
                         minimumSize: const Size(double.infinity, 46),
                         foregroundColor: colorScheme.onSurfaceVariant,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(AppRadius.control),
                         ),
                       ),
                       child: const Text('取消'),
@@ -696,9 +679,9 @@ class _BottomDock extends StatelessWidget {
     return Material(
       color: colorScheme.surface.withValues(alpha: 0.96),
       elevation: 2,
-      shadowColor: const Color(0x12000000),
+      shadowColor: colorScheme.shadow,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         side: BorderSide(
           color: colorScheme.outlineVariant.withValues(alpha: 0.55),
         ),
@@ -735,37 +718,6 @@ class _BottomDock extends StatelessWidget {
             label: '设置',
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _BackgroundGlow extends StatelessWidget {
-  const _BackgroundGlow({
-    required this.alignment,
-    required this.color,
-    required this.size,
-  });
-
-  final Alignment alignment;
-  final Color color;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: alignment,
-      child: IgnorePointer(
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(
-              colors: [color, color.withValues(alpha: 0)],
-            ),
-          ),
-        ),
       ),
     );
   }

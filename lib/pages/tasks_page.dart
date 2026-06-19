@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
+import '../app/spacing.dart';
 import 'package:video_player/video_player.dart';
 
 import '../app/app_scope.dart';
@@ -525,10 +526,10 @@ class _TaskFilterChip<T> extends StatelessWidget {
         color: selected
             ? colorScheme.primary.withValues(alpha: 0.12)
             : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         child: InkWell(
           onTap: selected ? null : onTap,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
             curve: Curves.easeOut,
@@ -684,7 +685,7 @@ class _MetaPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: effectiveTone.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -745,7 +746,7 @@ class _TaskMetaChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -801,10 +802,10 @@ class _ResultPanel extends StatelessWidget {
         const SizedBox(height: 8),
         if (mediaUrl != null && mediaUrl.trim().isNotEmpty) ...[
           InkWell(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppRadius.control),
             onTap: () => helper._openMedia(context, task),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(AppRadius.control),
               child: SizedBox(
                 width: double.infinity,
                 height: 124,
@@ -1590,7 +1591,7 @@ class _TaskAttachmentThumb extends StatelessWidget {
                       color: colorScheme.surface.withValues(
                         alpha: compact ? 0.84 : 0.92,
                       ),
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
                     ),
                     child: Icon(
                       attachment.kind == AttachmentKind.video
@@ -1672,11 +1673,11 @@ class _TaskVideoPreviewState extends State<_TaskVideoPreview> {
           ),
         ),
         Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0x22000000), Color(0x8A000000)],
+              colors: [Colors.black.withValues(alpha: 0.13), Colors.black.withValues(alpha: 0.54)],
             ),
           ),
         ),
@@ -1802,7 +1803,7 @@ class _TaskVideoPlayerState extends State<_TaskVideoPlayer> {
       return Container(
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         child: const Center(child: CircularProgressIndicator()),
       );
@@ -1815,7 +1816,7 @@ class _TaskVideoPlayerState extends State<_TaskVideoPlayer> {
       return Container(
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         child: Center(
           child: Text('视频暂不可播放', style: Theme.of(context).textTheme.bodyMedium),
@@ -1823,7 +1824,7 @@ class _TaskVideoPlayerState extends State<_TaskVideoPlayer> {
       );
     }
     return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(AppRadius.card),
       child: ColoredBox(
         color: Colors.black,
         child: Center(
@@ -1988,7 +1989,7 @@ class _TaskImagePreviewCard extends StatelessWidget {
         );
 
     return InkWell(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(AppRadius.card),
       onTap: () => showAttachmentPreviewSheet(
         context,
         previewAttachment,
@@ -2012,7 +2013,7 @@ class _TaskImagePreviewCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: colorScheme.surface.withValues(alpha: 0.78),
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
                   border: Border.all(
                     color: statusColor.withValues(alpha: 0.16),
                   ),

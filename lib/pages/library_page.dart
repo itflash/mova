@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app/spacing.dart';
 import 'package:flutter/services.dart';
 
 import '../app/app_scope.dart';
@@ -10,6 +11,7 @@ import 'home_shell.dart';
 import 'image_create_page.dart';
 import 'video_frame_capture_page.dart';
 import '../widgets/attachment_media.dart';
+import '../widgets/app_dropdown.dart';
 
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});
@@ -248,14 +250,14 @@ class _LibraryFilterPanelState extends State<_LibraryFilterPanel> {
             ),
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<LibraryFilter>(
-            initialValue: state.libraryFilter,
-            decoration: const InputDecoration(labelText: '素材类型'),
+          AppDropdownField<LibraryFilter>(
+            value: state.libraryFilter,
+            labelText: '素材类型',
             items: const [
-              DropdownMenuItem(value: LibraryFilter.all, child: Text('全部')),
-              DropdownMenuItem(value: LibraryFilter.image, child: Text('图片')),
-              DropdownMenuItem(value: LibraryFilter.video, child: Text('视频')),
-              DropdownMenuItem(value: LibraryFilter.audio, child: Text('音频')),
+              DropdownItemData(value: LibraryFilter.all, label: '全部'),
+              DropdownItemData(value: LibraryFilter.image, label: '图片'),
+              DropdownItemData(value: LibraryFilter.video, label: '视频'),
+              DropdownItemData(value: LibraryFilter.audio, label: '音频'),
             ],
             onChanged: (value) {
               if (value != null) {
@@ -266,13 +268,35 @@ class _LibraryFilterPanelState extends State<_LibraryFilterPanel> {
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  state.hasActiveLibraryFilters ? '已启用更多筛选' : '更多筛选',
-                  style: Theme.of(context).textTheme.labelMedium,
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _showAdvanced = !_showAdvanced),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      state.hasActiveLibraryFilters
+                          ? '已启用更多筛选'
+                          : '更多筛选',
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                    const SizedBox(width: 2),
+                    AnimatedRotation(
+                      turns: _showAdvanced ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      child: Icon(
+                        Icons.expand_more_rounded,
+                        size: 20,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              if (state.hasActiveLibraryFilters)
+              if (state.hasActiveLibraryFilters) ...[
+                const Spacer(),
                 TextButton(
                   onPressed: () {
                     state.clearLibraryFilters();
@@ -282,15 +306,7 @@ class _LibraryFilterPanelState extends State<_LibraryFilterPanel> {
                   },
                   child: const Text('清空'),
                 ),
-              IconButton(
-                tooltip: _showAdvanced ? '收起更多筛选' : '展开更多筛选',
-                onPressed: () => setState(() => _showAdvanced = !_showAdvanced),
-                icon: AnimatedRotation(
-                  turns: _showAdvanced ? 0.5 : 0,
-                  duration: const Duration(milliseconds: 180),
-                  child: const Icon(Icons.expand_more_rounded),
-                ),
-              ),
+              ],
             ],
           ),
           AnimatedCrossFade(
@@ -460,7 +476,7 @@ class _CompactAttachmentRow extends StatelessWidget {
             onChanged: (value) => onSelectedChanged(value ?? false),
           ),
           InkWell(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(AppRadius.control),
             onTap: canAccess
                 ? () => showAttachmentPreviewSheet(
                     context,
@@ -811,7 +827,7 @@ class _BatchDeleteAttachmentSheetState
                     height: 42,
                     decoration: BoxDecoration(
                       color: colorScheme.errorContainer,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(AppRadius.control),
                     ),
                     child: Icon(
                       Icons.delete_sweep_rounded,
@@ -844,7 +860,7 @@ class _BatchDeleteAttachmentSheetState
                   color: colorScheme.surfaceContainerHighest.withValues(
                     alpha: 0.6,
                   ),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -871,7 +887,7 @@ class _BatchDeleteAttachmentSheetState
               Container(
                 decoration: BoxDecoration(
                   color: colorScheme.surface,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(
                     color: colorScheme.outlineVariant.withValues(alpha: 0.55),
                   ),
@@ -970,7 +986,7 @@ class _DeleteAttachmentSheetState extends State<_DeleteAttachmentSheet> {
                     height: 42,
                     decoration: BoxDecoration(
                       color: colorScheme.errorContainer,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(AppRadius.control),
                     ),
                     child: Icon(
                       Icons.delete_forever_rounded,
@@ -1003,7 +1019,7 @@ class _DeleteAttachmentSheetState extends State<_DeleteAttachmentSheet> {
                   color: colorScheme.surfaceContainerHighest.withValues(
                     alpha: 0.6,
                   ),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1030,7 +1046,7 @@ class _DeleteAttachmentSheetState extends State<_DeleteAttachmentSheet> {
               Container(
                 decoration: BoxDecoration(
                   color: colorScheme.surface,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(
                     color: colorScheme.outlineVariant.withValues(alpha: 0.55),
                   ),
@@ -1069,7 +1085,7 @@ class _DeleteAttachmentSheetState extends State<_DeleteAttachmentSheet> {
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size.fromHeight(46),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(AppRadius.control),
                         ),
                       ),
                       child: const Text('保留素材'),
@@ -1090,7 +1106,7 @@ class _DeleteAttachmentSheetState extends State<_DeleteAttachmentSheet> {
                         foregroundColor: colorScheme.onError,
                         minimumSize: const Size.fromHeight(46),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(AppRadius.control),
                         ),
                       ),
                       child: Text(
@@ -1204,7 +1220,7 @@ class _AttachmentCardState extends State<_AttachmentCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               InkWell(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(AppRadius.control),
                 onTap: canAccess
                     ? () => showAttachmentPreviewSheet(
                         context,
@@ -1401,7 +1417,7 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                   color: colorScheme.surfaceContainerHighest.withValues(
                     alpha: 0.35,
                   ),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
@@ -1630,7 +1646,7 @@ class _AttachmentThumbWithFileSize extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
               decoration: BoxDecoration(
                 color: colorScheme.surface.withValues(alpha: 0.78),
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
                 border: Border.all(
                   color: colorScheme.outlineVariant.withValues(alpha: 0.38),
                 ),
@@ -1726,7 +1742,7 @@ class _AttachmentActionButton extends StatelessWidget {
         minimumSize: const Size(0, 38),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.control)),
       ),
       icon: Icon(icon, size: 18),
       label: Text(label),
@@ -1766,7 +1782,7 @@ class _AttachmentOverflowButton extends StatelessWidget {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         minimumSize: const Size(36, 36),
         padding: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.control)),
       ),
     );
   }
