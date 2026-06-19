@@ -6,6 +6,8 @@ import 'package:video_player/video_player.dart';
 import '../app/app_scope.dart';
 import '../app/app_state.dart';
 import '../app/composition_models.dart';
+import '../app/models.dart';
+import '../widgets/attachment_picker_sheet.dart';
 import 'home_shell.dart';
 
 class CompositionPage extends StatelessWidget {
@@ -45,13 +47,25 @@ class CompositionPage extends StatelessWidget {
                   ],
                 ],
                 const SizedBox(height: 14),
-                Tooltip(
-                  message: '添加本地视频',
-                  child: FilledButton.icon(
-                    onPressed: state.pickAndAddLocalCompositionVideo,
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('添加视频片段'),
-                  ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    Tooltip(
+                      message: '添加本地视频',
+                      child: FilledButton.icon(
+                        onPressed: state.pickAndAddLocalCompositionVideo,
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text('本地视频'),
+                      ),
+                    ),
+                    _NeutralActionButton(
+                      onPressed: () =>
+                          _pickAndAddAttachmentVideo(context, state),
+                      icon: const Icon(Icons.video_library_rounded),
+                      label: '素材库视频',
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -232,6 +246,35 @@ class CompositionPage extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+Future<void> _pickAndAddAttachmentVideo(
+  BuildContext context,
+  AppState state,
+) async {
+  final picked = await showAttachmentPickerSheet(
+    context: context,
+    state: state,
+    title: '选择素材库视频',
+    subtitle: '从素材库选择一个视频加入剪辑。',
+    kind: AttachmentKind.video,
+  );
+  if (picked == null) return;
+
+  try {
+    final added = await state.addAttachmentVideoToComposition(picked.id);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(added ? '已添加到剪辑' : '添加失败')));
+  } on Exception catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(state.cleanErrorForDisplay(error))),
+      );
   }
 }
 
