@@ -99,36 +99,41 @@ class _ImageCreatePageState extends State<ImageCreatePage> {
                               ? null
                               : () => _clearImagePrompt(context, state),
                         ),
-                        Stack(
-                          children: [
-                            TextField(
-                              controller: _promptController,
-                              minLines: 4,
-                              maxLines: 7,
-                              onChanged: state.updateImagePrompt,
-                              decoration: InputDecoration(
-                                hintText: isEditMode
-                                    ? '描述你要如何修改参考图，比如替换背景、改服装、变风格。'
-                                    : '描述主体、风格、镜头、构图、光线、材质和氛围。',
-                                counterText: '',
-                              ),
-                            ),
-                            Positioned(
-                              right: 12,
-                              bottom: 8,
-                              child: Text(
-                                '${state.imagePrompt.length}/2000',
-                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                  color: state.imagePrompt.length > 2000
-                                      ? Theme.of(context).colorScheme.error
-                                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                        Padding(
+                          padding: EdgeInsets.only(
+                            bottom: keyboardOpen ? 56 : 0,
+                          ),
+                          child: Stack(
+                            children: [
+                              TextField(
+                                controller: _promptController,
+                                minLines: 4,
+                                maxLines: 7,
+                                onChanged: state.updateImagePrompt,
+                                decoration: InputDecoration(
+                                  hintText: isEditMode
+                                      ? '描述你要如何修改参考图，比如替换背景、改服装、变风格。'
+                                      : '描述主体、风格、镜头、构图、光线、材质和氛围。',
+                                  counterText: '',
                                 ),
                               ),
-                            ),
-                          ],
+                              Positioned(
+                                right: 12,
+                                bottom: 8,
+                                child: Text(
+                                  '${state.imagePrompt.length}/2000',
+                                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: state.imagePrompt.length > 2000
+                                        ? Theme.of(context).colorScheme.error
+                                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
-                    ),
+                   ),
                   ),
                   const SizedBox(height: 16),
                   SectionLabel('参数'),

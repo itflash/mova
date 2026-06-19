@@ -129,38 +129,43 @@ class _CreatePageState extends State<CreatePage> {
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     const SizedBox(height: 14),
-                    Stack(
-                      children: [
-                        TextField(
-                          controller: _promptController,
-                          minLines: 6,
-                          maxLines: 9,
-                          onChanged: (value) {
-                            _applyPromptChange(state, value);
-                          },
-                          onTap: () => _inspectMention(state),
-                          decoration: InputDecoration(
-                            hintText: state.activeMode == ModeId.text
-                                ? '描述镜头、动作和氛围。'
-                                : state.supportsPromptMentions
-                                ? '描述镜头、动作和氛围，也可以输入 @ 插入素材标签。'
-                                : '描述从首帧到尾帧之间的动作、镜头和氛围。',
-                            counterText: '',
-                          ),
-                        ),
-                        Positioned(
-                          right: 12,
-                          bottom: 8,
-                          child: Text(
-                            '${state.prompt.length}/5000',
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: state.prompt.length > 5000
-                                  ? Theme.of(context).colorScheme.error
-                                  : Theme.of(context).colorScheme.onSurfaceVariant,
+                    Padding(
+                      padding: EdgeInsets.only(
+                        bottom: keyboardOpen ? 56 : 0,
+                      ),
+                      child: Stack(
+                        children: [
+                          TextField(
+                            controller: _promptController,
+                            minLines: 6,
+                            maxLines: 9,
+                            onChanged: (value) {
+                              _applyPromptChange(state, value);
+                            },
+                            onTap: () => _inspectMention(state),
+                            decoration: InputDecoration(
+                              hintText: state.activeMode == ModeId.text
+                                  ? '描述镜头、动作和氛围。'
+                                  : state.supportsPromptMentions
+                                  ? '描述镜头、动作和氛围，也可以输入 @ 插入素材标签。'
+                                  : '描述从首帧到尾帧之间的动作、镜头和氛围。',
+                              counterText: '',
                             ),
                           ),
-                        ),
-                      ],
+                          Positioned(
+                            right: 12,
+                            bottom: 8,
+                            child: Text(
+                              '${state.prompt.length}/5000',
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: state.prompt.length > 5000
+                                    ? Theme.of(context).colorScheme.error
+                                    : Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     if (state.supportsPromptMentions) ...[
                       const SizedBox(height: 14),

@@ -1174,10 +1174,20 @@ class _TaskLogButton extends StatelessWidget {
   }
 }
 
-class _VideoTaskCard extends StatelessWidget {
-  const _VideoTaskCard({required this.task});
+class _TaskCardShell extends StatelessWidget {
+  const _TaskCardShell({
+    required this.task,
+    required this.title,
+    required this.idTrailing,
+    this.anomalyPills = const [],
+    this.resultSection,
+  });
 
   final TaskRecord task;
+  final String title;
+  final Widget idTrailing;
+  final List<Widget> anomalyPills;
+  final Widget? resultSection;
 
   @override
   Widget build(BuildContext context) {
@@ -1189,7 +1199,7 @@ class _VideoTaskCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SectionLabel(TasksPage._modeLabel(task.mode)),
+        SectionLabel(title),
         UtilityPanel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1224,13 +1234,12 @@ class _VideoTaskCard extends StatelessWidget {
                             ),
                           ],
                         ),
-                        if (task.hasAnomaly) ...[
+                        if (anomalyPills.isNotEmpty) ...[
                           const SizedBox(height: 8),
-                          _MetaPill(
-                            icon: Icons.warning_amber_rounded,
-                            label: '异常',
-                            tone: Theme.of(context).colorScheme.error,
-                          ),
+                          if (anomalyPills.length == 1)
+                            anomalyPills.first
+                          else
+                            Wrap(spacing: 8, runSpacing: 8, children: anomalyPills),
                         ],
                       ],
                     ),
@@ -1252,7 +1261,7 @@ class _VideoTaskCard extends StatelessWidget {
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
-                  _TaskActionBar(task: task),
+                  idTrailing,
                 ],
               ),
               if (showLogs) ...[
@@ -1260,33 +1269,8 @@ class _VideoTaskCard extends StatelessWidget {
                 const SizedBox(height: 12),
                 _PollLogPanel(logs: task.pollLogs),
               ],
-              if (task.downloadStatus == DownloadStatus.downloading) ...[
-                const PanelDivider(),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '下载中 ${task.downloadProgress}%',
-                        style: Theme.of(context).textTheme.labelMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      LinearProgressIndicator(
-                        value: task.downloadProgress <= 0
-                            ? null
-                            : task.downloadProgress / 100,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              if (task.videoUrl != null || task.localResourceUri != null) ...[
-                const PanelDivider(),
-                const SizedBox(height: 12),
-                _ResultPanel(task: task),
-              ],
-              if (task.lastError != null) ...[
+              ?resultSection,
+             if (task.lastError != null) ...[
                 const PanelDivider(),
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
@@ -1316,6 +1300,66 @@ class _VideoTaskCard extends StatelessWidget {
   }
 }
 
+class _VideoTaskCard extends StatelessWidget {
+  const _VideoTaskCard({required this.task});
+
+  final TaskRecord task;
+
+  @override
+  Widget build(BuildContext context) {
+    final sections = <Widget>[];
+    if (task.downloadStatus == DownloadStatus.downloading) {
+      sections.add(const PanelDivider());
+      sections.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '下载中 ${task.downloadProgress}%',
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(
+                value: task.downloadProgress <= 0
+                    ? null
+                    : task.downloadProgress / 100,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (task.videoUrl != null || task.localResourceUri != null) {
+      sections.add(const PanelDivider());
+      sections.add(const SizedBox(height: 12));
+      sections.add(_ResultPanel(task: task));
+    }
+
+    return _TaskCardShell(
+      task: task,
+      title: TasksPage._modeLabel(task.mode),
+      idTrailing: _TaskActionBar(task: task),
+      anomalyPills: task.hasAnomaly
+          ? [
+              _MetaPill(
+                icon: Icons.warning_amber_rounded,
+                label: '异常',
+                tone: Theme.of(context).colorScheme.error,
+              ),
+            ]
+          : const [],
+      resultSection: sections.isEmpty
+          ? null
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: sections,
+            ),
+    );
+  }
+}
+
 class _ImageTaskCard extends StatelessWidget {
   const _ImageTaskCard({required this.task});
 
@@ -1324,9 +1368,6 @@ class _ImageTaskCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final tone = TasksPage()._toneForTask(context, task.status);
-    final active = TasksPage()._isActive(task);
-    final showLogs = state.expandedPollLogTaskIds.contains(task.id);
     final previewItems = task.imageResults
         .map((item) => _TaskImagePreviewData.fromResult(state, item))
         .whereType<_TaskImagePreviewData>()
@@ -1339,94 +1380,36 @@ class _ImageTaskCard extends StatelessWidget {
         )
         .length;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SectionLabel(TasksPage._imageModeLabel(task.imageMode)),
-        UtilityPanel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          task.prompt,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        _TaskMetaRow(
-                          items: [
-                            _TaskMetaItem(
-                              icon: Icons.schedule_rounded,
-                              label: TasksPage._formatMetaDateTime(
-                                task.updatedAt,
-                              ),
-                              flex: 3,
-                            ),
-                            _TaskMetaItem(
-                              icon: Icons.bolt_outlined,
-                              label: '${task.estimatedCredit}',
-                              flex: 1,
-                            ),
-                          ],
-                        ),
-                        if (failed > 0 || task.hasAnomaly) ...[
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              if (failed > 0)
-                                _MetaPill(
-                                  icon: Icons.error_outline_rounded,
-                                  label: '$failed 失败',
-                                  tone: Theme.of(context).colorScheme.error,
-                                ),
-                              if (task.hasAnomaly)
-                                _MetaPill(
-                                  icon: Icons.warning_amber_rounded,
-                                  label: '异常',
-                                  tone: Theme.of(context).colorScheme.error,
-                                ),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  StatusPill(
-                    label: TasksPage._statusLabel(task.status),
-                    tone: tone,
-                    busy: active,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      task.id,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ),
-                  _ImageTaskActionBar(task: task),
-                ],
-              ),
-              if (showLogs) ...[
-                const PanelDivider(),
-                const SizedBox(height: 12),
-                _PollLogPanel(logs: task.pollLogs),
-              ],
-              if (task.imageResults.isNotEmpty) ...[
+    final pills = <Widget>[];
+    if (failed > 0) {
+      pills.add(
+        _MetaPill(
+          icon: Icons.error_outline_rounded,
+          label: '$failed 失败',
+          tone: Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
+    if (task.hasAnomaly) {
+      pills.add(
+        _MetaPill(
+          icon: Icons.warning_amber_rounded,
+          label: '异常',
+          tone: Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
+
+    return _TaskCardShell(
+      task: task,
+      title: TasksPage._imageModeLabel(task.imageMode),
+      idTrailing: _ImageTaskActionBar(task: task),
+      anomalyPills: pills,
+      resultSection: task.imageResults.isEmpty
+          ? null
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 const PanelDivider(),
                 const SizedBox(height: 12),
                 if (previewItems.isNotEmpty) ...[
@@ -1447,32 +1430,7 @@ class _ImageTaskCard extends StatelessWidget {
                   ),
                 ],
               ],
-              if (task.lastError != null) ...[
-                const PanelDivider(),
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Text(
-                    task.lastError!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: tone),
-                  ),
-                ),
-              ],
-              if (task.attachments.isNotEmpty) ...[
-                const PanelDivider(),
-                const SizedBox(height: 12),
-                _TaskAttachmentStrip(
-                  title: '引用素材',
-                  attachments: task.attachments,
-                ),
-              ],
-            ],
-          ),
-        ),
-      ],
+            ),
     );
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -35,13 +37,9 @@ class HomeShell extends StatelessWidget {
           ),
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-        child: _BottomDock(
-          selectedIndex: state.currentTab.index,
-          onChanged: (index) => state.setCurrentTab(AppTab.values[index]),
-        ),
+      bottomNavigationBar: _BottomDock(
+        selectedIndex: state.currentTab.index,
+        onChanged: (index) => state.setCurrentTab(AppTab.values[index]),
       ),
     );
   }
@@ -673,51 +671,96 @@ class _BottomDock extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onChanged;
 
+  static const _items = [
+    (
+      icon: Icons.auto_awesome_outlined,
+      activeIcon: Icons.auto_awesome,
+      label: '创作',
+    ),
+    (
+      icon: Icons.photo_library_outlined,
+      activeIcon: Icons.photo_library,
+      label: '素材',
+    ),
+    (
+      icon: Icons.content_cut_outlined,
+      activeIcon: Icons.content_cut,
+      label: '剪辑',
+    ),
+    (
+      icon: Icons.video_collection_outlined,
+      activeIcon: Icons.video_collection,
+      label: '任务',
+    ),
+    (
+      icon: Icons.tune_outlined,
+      activeIcon: Icons.tune,
+      label: '设置',
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Material(
-      color: colorScheme.surface.withValues(alpha: 0.96),
-      elevation: 2,
-      shadowColor: colorScheme.shadow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        side: BorderSide(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.55),
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    // Frosted background tint: lighter on dark, more opaque on light.
+    final barColor = colorScheme.surface.withValues(alpha: isDark ? 0.72 : 0.85);
+    final activeColor = colorScheme.primary;
+    final inactiveColor = colorScheme.onSurfaceVariant.withValues(alpha: 0.6);
+
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: ColoredBox(
+          color: barColor,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Hairline separator like iOS UITabBar.
+              Container(
+                height: 0.5,
+                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+              SafeArea(
+                top: false,
+                child: SizedBox(
+                  height: 49,
+                  child: Row(
+                    children: List.generate(_items.length, (i) {
+                      final item = _items[i];
+                      final selected = i == selectedIndex;
+                      final color = selected ? activeColor : inactiveColor;
+                      final icon = selected ? item.activeIcon : item.icon;
+                      return Expanded(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => onChanged(i),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(icon, size: 24, color: color),
+                              const SizedBox(height: 2),
+                              Text(
+                                item.label,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: color,
+                                  fontSize: 10,
+                                  height: 1,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-      child: NavigationBar(
-        height: 72,
-        selectedIndex: selectedIndex,
-        onDestinationSelected: onChanged,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.auto_awesome_outlined),
-            selectedIcon: Icon(Icons.auto_awesome),
-            label: '创作',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.photo_library_outlined),
-            selectedIcon: Icon(Icons.photo_library),
-            label: '素材',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.content_cut_outlined),
-            selectedIcon: Icon(Icons.content_cut),
-            label: '剪辑',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.video_collection_outlined),
-            selectedIcon: Icon(Icons.video_collection),
-            label: '任务',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.tune_outlined),
-            selectedIcon: Icon(Icons.tune),
-            label: '设置',
-          ),
-        ],
       ),
     );
   }

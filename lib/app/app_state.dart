@@ -1506,7 +1506,7 @@ class AppState extends ChangeNotifier {
       return false;
     }
     if (imagePrompt.length > 2000) {
-      imageSubmitErrorMessage = 'Prompt 不能超过 5000 字符。';
+      imageSubmitErrorMessage = 'Prompt 不能超过 2000 字符。';
       notifyListeners();
       return false;
     }
