@@ -43,7 +43,7 @@ If needed, verify toolchain and devices:
 - Android application id: `com.jbrains.mova`
 - iOS bundle id: `com.jbrains.mova`
 - Git remote: `git@github.com:itflash/mova.git`
-- Current version: `1.0.0+1`
+- Current version: `1.0.4+2005`
 
 Known last working Flutter binary:
 
@@ -123,6 +123,19 @@ ANDROID_KEY_PASSWORD
 - The workflow reconstructs `android/release.keystore` and `android/key.properties` during CI
 - Matching local and GitHub release signatures require using the same keystore material in both places
 - Never commit real `key.properties`, `.jks`, or `.keystore` files
+
+## Packaging (打包)
+
+用户说“打包”时，从 `mova` 仓库根目录执行 release 构建：
+
+```bash
+/Users/jbrains/dev/flutter-sdk/bin/flutter build apk --release --split-per-abi
+```
+
+- 产物目录：`build/app/outputs/flutter-apk/`
+- 主流手机装 `app-arm64-v8a-release.apk`，老设备装 `app-armeabi-v7a-release.apk`，模拟器装 `app-x86_64-release.apk`
+- 构建前确认 `android/key.properties` 与 `android/release.keystore` 存在，否则会回退到 debug 签名
+- 升版本号时同步改 `pubspec.yaml` 的 `version: x.y.z+N`，打 tag 用 `git tag vx.y.z`
 
 ## Scope Discipline
 
