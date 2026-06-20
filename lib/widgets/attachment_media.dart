@@ -1,13 +1,17 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
+
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
 import '../app/spacing.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:video_player/video_player.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 
 import '../app/app_scope.dart';
 import '../app/models.dart';
@@ -878,9 +882,10 @@ class _ResolvedAttachmentVideoThumb extends StatefulWidget {
 
 class _ResolvedAttachmentVideoThumbState
     extends State<_ResolvedAttachmentVideoThumb> {
-  // 缩略图用 video_thumbnail 抽首帧，不再为每个列表项建 VideoPlayerController。
+  // 缩略图用 ffmpeg 抽首帧缓存到本地，不再为每个列表项建 VideoPlayerController。
   // 后者会真正初始化原生解码器，列表里几十个视频项会同时建几十个解码器，
-  // 是素材库滚动卡顿的主因。
+  // 是素材库滚动卡顿的主因。ffmpeg 抽帧轻量，且结果按 url 哈希缓存到磁盘，
+  // 滚动回来直接读已有图片，不重复抽帧。
   String? _thumbPath;
   bool _loading = false;
   bool _initialized = false;
@@ -904,18 +909,11 @@ class _ResolvedAttachmentVideoThumbState
         setState(() => _loading = false);
         return;
       }
-     _resolvedUrl = url.trim();
-      // 加超时保护：测试环境或平台 channel 异常时不会永久挂起，直接降级
-      // 到 fallback 占位图。真实抽帧通常 <1s 完成。
-      final result = await VideoThumbnail.thumbnailFile(
-        video: _resolvedUrl!,
-        imageFormat: ImageFormat.JPEG,
-        maxWidth: 480,
-        quality: 70,
-      ).timeout(const Duration(seconds: 5));
+      _resolvedUrl = url.trim();
+      final cached = await _cachedVideoThumbnail(_resolvedUrl!);
       if (!mounted) return;
       setState(() {
-        _thumbPath = result;
+        _thumbPath = cached;
         _loading = false;
       });
     } catch (_) {
@@ -1060,4 +1058,46 @@ class _PreviewFallback extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// 用 ffmpeg 给视频抽一帧首帧作为缩略图，结果按 url 哈希缓存到系统临时目录。
+/// 同一视频重复滚动进入列表时直接读已有 jpg，不重复抽帧，避免卡顿。
+/// 抽帧失败（网络异常、格式不支持等）返回 null，调用方降级到 fallback 占位图。
+Future<String?> _cachedVideoThumbnail(String videoUrl) async {
+  final cacheDir = Directory('${Directory.systemTemp.path}/mova-thumbs');
+  if (!cacheDir.existsSync()) {
+    cacheDir.createSync(recursive: true);
+  }
+  final hash = md5.convert(utf8.encode(videoUrl)).toString();
+  final thumbPath = '${cacheDir.path}/$hash.jpg';
+  final thumbFile = File(thumbPath);
+  if (thumbFile.existsSync() && thumbFile.lengthSync() > 0) {
+    return thumbPath;
+  }
+  // -ss 1 seek 到 1 秒（输入前，快进），-frames:v 1 只取一帧，
+  // scale=480:-2 缩放到宽 480、高度自动对齐偶数，-q:v 4 控制质量/体积。
+  final args = [
+    '-y',
+    '-ss', '1',
+    '-i', videoUrl,
+    '-frames:v', '1',
+    '-vf', 'scale=480:-2',
+    '-q:v', '4',
+    thumbPath,
+  ];
+  final session = await FFmpegKit.executeWithArguments(args).timeout(
+    const Duration(seconds: 8),
+  );
+  final returnCode = await session.getReturnCode();
+  if (ReturnCode.isSuccess(returnCode) &&
+      thumbFile.existsSync() &&
+      thumbFile.lengthSync() > 0) {
+    return thumbPath;
+  }
+  // 抽帧失败，清理可能产生的空文件。
+  if (thumbFile.existsSync()) {
+    thumbFile.deleteSync();
+  }
+  return null;
 }
