@@ -1,6 +1,8 @@
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
 
+import 'spacing.dart';
+
 const _lightScaffold = Color(0xFFF2F2F7);
 const _darkScaffold = Color(0xFF111317);
 
@@ -87,7 +89,9 @@ ThemeData buildLightTheme() {
       elevation: 0,
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
     ),
     dividerTheme: DividerThemeData(
       color: colorScheme.outlineVariant.withValues(alpha: 0.75),
@@ -190,7 +194,9 @@ ThemeData buildLightTheme() {
     popupMenuTheme: PopupMenuThemeData(
       color: colorScheme.surface,
       elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
     ),
     navigationBarTheme: NavigationBarThemeData(
       labelTextStyle: WidgetStateProperty.resolveWith(
@@ -212,7 +218,7 @@ ThemeData buildLightTheme() {
               : colorScheme.onSurfaceVariant,
         ),
       ),
-      indicatorColor: const Color(0xFFDCEBFF),
+      indicatorColor: colorScheme.primaryContainer,
       backgroundColor: Colors.transparent,
       elevation: 0,
     ),
@@ -284,7 +290,9 @@ ThemeData buildDarkTheme() {
       elevation: 0,
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
     ),
     dividerTheme: DividerThemeData(
       color: colorScheme.outlineVariant.withValues(alpha: 0.85),
@@ -358,7 +366,7 @@ ThemeData buildDarkTheme() {
       ),
     ),
     navigationBarTheme: buildLightTheme().navigationBarTheme.copyWith(
-      indicatorColor: const Color(0xFF2A2D45),
+      indicatorColor: colorScheme.primaryContainer,
     ),
   );
 }

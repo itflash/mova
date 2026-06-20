@@ -1009,12 +1009,13 @@ class _VideoFrameSlots extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final children = <Widget>[
       _VideoFrameSlotCard(
         title: '首帧素材',
         subtitle: '决定视频从哪一帧开始。',
         attachment: state.selectedFirstFrameAttachment,
-        accentColor: const Color(0xFF5856F6),
+        accentColor: colorScheme.primary,
         pickLabel: '选择首帧',
         onPick: onPickFirstFrame,
         onCapture: onCaptureFirstFrame,
@@ -1033,7 +1034,7 @@ class _VideoFrameSlots extends StatelessWidget {
           title: '尾帧素材',
           subtitle: '决定视频收束到哪一帧。',
           attachment: state.selectedLastFrameAttachment,
-          accentColor: const Color(0xFF0A8E8E),
+          accentColor: colorScheme.tertiary,
           pickLabel: '选择尾帧',
           onPick: onPickLastFrame,
           onCapture: onCaptureLastFrame,

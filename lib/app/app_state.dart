@@ -2350,6 +2350,12 @@ class AppState extends ChangeNotifier {
   Future<String?> saveCompositionExportToGallery() async {
     final result = compositionExportResult;
     if (result == null) return null;
+    if (!File(result.localPath).existsSync()) {
+      compositionExportResult = null;
+      compositionExportErrorMessage = '上次导出的文件已不存在，请重新导出。';
+      notifyListeners();
+      return null;
+    }
     final saved = await _mediaChannel.invokeMapMethod<String, Object?>(
       'saveVideoToGallery',
       {'sourcePath': result.localPath, 'fileName': result.fileName},
@@ -2362,6 +2368,12 @@ class AppState extends ChangeNotifier {
   }) async {
     final result = compositionExportResult;
     if (result == null) return null;
+    if (!File(result.localPath).existsSync()) {
+      compositionExportResult = null;
+      compositionExportErrorMessage = '上次导出的文件已不存在，请重新导出。';
+      notifyListeners();
+      return null;
+    }
     if (!isCurrentStorageConfigured) {
       throw StateError('请先在设置里填写完整的$currentStorageProviderLabel配置。');
     }
@@ -3489,6 +3501,16 @@ class AppState extends ChangeNotifier {
     compositionExportResult = _compositionExportResultFromJson(
       map['compositionExportResult'],
     );
+    // 上次导出的视频写在系统临时目录里，应用退出后可能被系统清理。
+    // 若文件不存在，丢弃缓存的导出结果，避免下次进入剪辑页/保存到相册/
+    // 导入素材库时读取空文件而抛异常。
+    final cachedExport = compositionExportResult;
+    if (cachedExport != null) {
+      final localPath = cachedExport.localPath.trim();
+      if (localPath.isEmpty || !File(localPath).existsSync()) {
+        compositionExportResult = null;
+      }
+    }
     prompt = _normalizedVideoPromptForMode(prompt, activeMode);
   }
 

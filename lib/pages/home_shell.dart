@@ -543,11 +543,11 @@ Future<bool> confirmAction(
                   border: Border.all(
                     color: colorScheme.outlineVariant.withValues(alpha: 0.5),
                   ),
-                  boxShadow: const [
+                  boxShadow: [
                     BoxShadow(
-                      color: Color(0x12000000),
+                      color: colorScheme.shadow.withValues(alpha: 0.07),
                       blurRadius: 30,
-                      offset: Offset(0, 12),
+                      offset: const Offset(0, 12),
                     ),
                   ],
                 ),

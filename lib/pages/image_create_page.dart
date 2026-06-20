@@ -38,7 +38,6 @@ class _ImageCreatePageState extends State<ImageCreatePage> {
     _ensureImageToolResolution(state);
 
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final isEditMode = state.activeImageMode == ImageCreateMode.imageToImage;
     final hasPrompt = state.imagePrompt.trim().isNotEmpty;
     final hasRequiredReferences =
@@ -48,9 +47,7 @@ class _ImageCreatePageState extends State<ImageCreatePage> {
     final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
 
     return Scaffold(
-      backgroundColor: isDark
-          ? const Color(0xFF111317)
-          : const Color(0xFFF2F2F7),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         bottom: false,
         child: AppPageScaffold(

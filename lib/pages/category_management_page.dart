@@ -11,14 +11,20 @@ class CategoryManagementPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: DecoratedBox(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFFF7F8FC), Color(0xFFF1F2F6)],
+            colors: [
+              colorScheme.surface,
+              theme.scaffoldBackgroundColor,
+            ],
           ),
         ),
         child: SafeArea(
