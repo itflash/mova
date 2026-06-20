@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../pages/home_shell.dart';
 import 'app_scope.dart';
 import 'app_state.dart';
+import 'shadcn_theme.dart';
 import 'theme.dart';
 
 class SeedanceNativeApp extends StatefulWidget {
@@ -40,13 +42,18 @@ class _SeedanceNativeAppState extends State<SeedanceNativeApp>
   Widget build(BuildContext context) {
     return AppScope(
       state: _state,
-      child: MaterialApp(
-        title: 'Mova',
-        debugShowCheckedModeBanner: false,
-        themeMode: ThemeMode.system,
-        theme: buildLightTheme(),
-        darkTheme: buildDarkTheme(),
-        home: const HomeShell(),
+      child: Builder(
+        builder: (context) => ShadTheme(
+          data: shadThemeFor(Theme.of(context).brightness),
+          child: MaterialApp(
+            title: 'Mova',
+            debugShowCheckedModeBanner: false,
+            themeMode: ThemeMode.system,
+            theme: buildLightTheme(),
+            darkTheme: buildDarkTheme(),
+            home: const HomeShell(),
+          ),
+        ),
       ),
     );
   }

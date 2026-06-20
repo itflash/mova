@@ -4,6 +4,7 @@ import '../app/spacing.dart';
 import '../app/app_scope.dart';
 import '../app/mock_data.dart';
 import 'home_shell.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
 
 class CategoryManagementPage extends StatelessWidget {
   const CategoryManagementPage({super.key});
@@ -156,21 +157,18 @@ class CategoryManagementPage extends StatelessWidget {
                 '分类名会同时用于素材筛选和素材标记。',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
-              const SizedBox(height: 16),
-              TextField(
+             const SizedBox(height: 16),
+              ShadInput(
                 controller: controller,
                 autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: '分类名',
-                  hintText: '例如：服装、品牌、机位',
-                ),
+                placeholder: const Text('例如：服装、品牌、机位'),
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) {
                   onSubmit(controller.text);
                   Navigator.of(context).pop();
                 },
               ),
-              const SizedBox(height: 16),
+             const SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(

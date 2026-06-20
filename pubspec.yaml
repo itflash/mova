@@ -41,6 +41,7 @@ dependencies:
   chewie: ^1.14.1
   ffmpeg_kit_flutter_new: ^4.2.1
   cached_network_image: ^3.4.1
+  shadcn_ui: ^0.55.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
