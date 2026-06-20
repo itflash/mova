@@ -2238,6 +2238,7 @@ class AppState extends ChangeNotifier {
             labelOverride: 'AI图片-${DateTime.now().millisecondsSinceEpoch}',
             roleOverride: activeMetadata.role,
             categoryOverride: activeMetadata.category,
+            sourceTaskId: taskId,
           );
 
           final latestIndex = tasks.indexWhere((entry) => entry.id == taskId);
@@ -2725,6 +2726,7 @@ class AppState extends ChangeNotifier {
     String? labelOverride,
     AttachmentRole? roleOverride,
     String? categoryOverride,
+    String? sourceTaskId,
   }) async {
     final now = DateTime.now();
     final id = 'asset-${now.microsecondsSinceEpoch}-${library.length}';
@@ -2746,6 +2748,7 @@ class AppState extends ChangeNotifier {
         storageEndpoint: result.storageEndpoint,
         storageRegion: result.storageRegion,
         fileSizeBytes: result.fileSizeBytes,
+        sourceTaskId: sourceTaskId,
       ),
     );
     notifyListeners();
@@ -3755,6 +3758,7 @@ class AppState extends ChangeNotifier {
     'storageEndpoint': value.storageEndpoint,
     'storageRegion': value.storageRegion,
     'fileSizeBytes': value.fileSizeBytes,
+    'sourceTaskId': value.sourceTaskId,
   };
 
   Map<String, Object?> _recentVideoSourceToJson(RecentVideoSource value) => {
@@ -3824,6 +3828,7 @@ class AppState extends ChangeNotifier {
       fileSizeBytes: map['fileSizeBytes'] is num
           ? (map['fileSizeBytes'] as num).round()
           : null,
+      sourceTaskId: _nullableStringValue(map['sourceTaskId']),
     );
   }
 

@@ -309,6 +309,7 @@ class Attachment {
     this.storageEndpoint,
     this.storageRegion,
     this.fileSizeBytes,
+    this.sourceTaskId,
   });
 
   final String id;
@@ -333,6 +334,10 @@ class Attachment {
   final String? storageRegion;
   final int? fileSizeBytes;
 
+  /// 该素材是哪个任务产出的（图片任务一次可能产出多张）。
+  /// 非任务来源（本地导入、合成导出、抓帧导入）为 null。
+  final String? sourceTaskId;
+
   Attachment copyWith({
     String? label,
     AttachmentRole? role,
@@ -354,11 +359,13 @@ class Attachment {
     String? storageEndpoint,
     String? storageRegion,
     int? fileSizeBytes,
+    String? sourceTaskId,
     bool clearLocalResourceUri = false,
     bool clearLocalFileName = false,
     bool clearLocalUpdatedAt = false,
     bool clearLocalErrorMessage = false,
     bool clearFileSizeBytes = false,
+    bool clearSourceTaskId = false,
   }) {
     return Attachment(
       id: id,
@@ -393,8 +400,56 @@ class Attachment {
       fileSizeBytes: clearFileSizeBytes
           ? null
           : (fileSizeBytes ?? this.fileSizeBytes),
+      sourceTaskId: clearSourceTaskId
+          ? null
+          : (sourceTaskId ?? this.sourceTaskId),
     );
   }
+}
+
+/// 一个素材库列表条目：
+/// - 单素材组（多数情况，非任务来源、本地导入、抓帧、合成等）
+/// - 任务组（同一任务产出的多个素材，UI 上折叠成一张组卡）
+class AttachmentGroup {
+  AttachmentGroup({required this.taskId, required this.items})
+    : assert(items.isNotEmpty);
+
+  /// 任务 ID。null 代表非任务来源；任务组保证非 null。
+  final String? taskId;
+
+  /// 该组下属的素材，按列表展示顺序排列（与传入的素材列表保持一致）。
+  final List<Attachment> items;
+
+  bool get isTaskGroup => taskId != null && items.length > 1;
+
+  Attachment get representative => items.first;
+
+  int get count => items.length;
+}
+
+/// 把扁平的素材列表按 sourceTaskId 聚合成 [AttachmentGroup]：
+/// - sourceTaskId 为空或仅有 1 个素材的任务，作为单素材组（保持原顺序）
+/// - 同一任务产出的多素材，合并为一张任务组卡，组的位置取该组首个素材在
+///   原列表中的位置，组内素材按原列表相对顺序保留
+List<AttachmentGroup> groupAttachmentsByTask(List<Attachment> attachments) {
+  final groups = <AttachmentGroup>[];
+  final taskGroupIndexById = <String, int>{};
+
+  for (final attachment in attachments) {
+    final taskId = attachment.sourceTaskId;
+    if (taskId == null || taskId.isEmpty) {
+      groups.add(AttachmentGroup(taskId: null, items: [attachment]));
+      continue;
+    }
+    final existingIndex = taskGroupIndexById[taskId];
+    if (existingIndex == null) {
+      taskGroupIndexById[taskId] = groups.length;
+      groups.add(AttachmentGroup(taskId: taskId, items: [attachment]));
+    } else {
+      groups[existingIndex].items.add(attachment);
+    }
+  }
+  return groups;
 }
 
 class VideoFrameSource {
