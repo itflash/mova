@@ -22,6 +22,8 @@ class CreatePage extends StatefulWidget {
 
 class _CreatePageState extends State<CreatePage> {
   late final TextEditingController _promptController;
+  late final TextEditingController _durationController;
+  late final TextEditingController _seedController;
   bool _mentionSheetOpen = false;
   bool _updatingController = false;
 
@@ -29,11 +31,15 @@ class _CreatePageState extends State<CreatePage> {
   void initState() {
     super.initState();
     _promptController = TextEditingController();
+    _durationController = TextEditingController();
+    _seedController = TextEditingController();
   }
 
   @override
   void dispose() {
     _promptController.dispose();
+    _durationController.dispose();
+    _seedController.dispose();
     super.dispose();
   }
 
@@ -42,6 +48,7 @@ class _CreatePageState extends State<CreatePage> {
     final state = AppScope.of(context);
 
     _syncPrompt(state);
+    _syncMetadataControllers(state);
     _handleMentionSheet(context, state);
     _ensureToolResolution(state);
 
@@ -131,9 +138,7 @@ class _CreatePageState extends State<CreatePage> {
                       ),
                     const SizedBox(height: 14),
                     Padding(
-                      padding: EdgeInsets.only(
-                        bottom: keyboardOpen ? 56 : 0,
-                      ),
+                      padding: EdgeInsets.only(bottom: keyboardOpen ? 56 : 0),
                       child: Stack(
                         children: [
                           TextField(
@@ -158,11 +163,14 @@ class _CreatePageState extends State<CreatePage> {
                             bottom: 8,
                             child: Text(
                               '${state.prompt.length}/5000',
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: state.prompt.length > 5000
-                                    ? Theme.of(context).colorScheme.error
-                                    : Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: state.prompt.length > 5000
+                                        ? Theme.of(context).colorScheme.error
+                                        : Theme.of(
+                                            context,
+                                          ).colorScheme.onSurfaceVariant,
+                                  ),
                             ),
                           ),
                         ],
@@ -195,13 +203,7 @@ class _CreatePageState extends State<CreatePage> {
                       child: SizedBox(
                         width: 92,
                         child: TextField(
-                          controller:
-                              TextEditingController(
-                                  text: state.metadata.duration,
-                                )
-                                ..selection = TextSelection.collapsed(
-                                  offset: state.metadata.duration.length,
-                                ),
+                          controller: _durationController,
                           textAlign: TextAlign.right,
                           decoration: const InputDecoration(isDense: true),
                           onChanged: (value) => state.updateMetadata(
@@ -230,7 +232,6 @@ class _CreatePageState extends State<CreatePage> {
                                 value: '720p',
                                 child: Text('720p'),
                               ),
-
                             ],
                             onChanged: (value) {
                               if (value == null) return;
@@ -292,11 +293,7 @@ class _CreatePageState extends State<CreatePage> {
                       child: SizedBox(
                         width: 140,
                         child: TextField(
-                          controller:
-                              TextEditingController(text: state.metadata.seed)
-                                ..selection = TextSelection.collapsed(
-                                  offset: state.metadata.seed.length,
-                                ),
+                          controller: _seedController,
                           textAlign: TextAlign.right,
                           decoration: const InputDecoration(
                             isDense: true,
@@ -378,18 +375,18 @@ class _CreatePageState extends State<CreatePage> {
               ],
             ],
           ),
-            Positioned(
-              right: 20,
-              bottom: keyboardOpen
-                  ? MediaQuery.of(context).viewInsets.bottom + 12
-                  : 16,
-              child: FloatingSubmitBar(
-                resolution: state.activeToolResolution,
-                label: '提交',
-                submitting: state.isSubmitting,
-                onPressed: canSubmit ? () => _submitTask(context, state) : null,
-              ),
+          Positioned(
+            right: 20,
+            bottom: keyboardOpen
+                ? MediaQuery.of(context).viewInsets.bottom + 12
+                : 16,
+            child: FloatingSubmitBar(
+              resolution: state.activeToolResolution,
+              label: '提交',
+              submitting: state.isSubmitting,
+              onPressed: canSubmit ? () => _submitTask(context, state) : null,
             ),
+          ),
         ],
       ),
     );
@@ -453,6 +450,26 @@ class _CreatePageState extends State<CreatePage> {
       selection: TextSelection.collapsed(offset: state.prompt.length),
     );
     _updatingController = false;
+  }
+
+  // 时长 / Seed 是简单文本字段：当外部 state 与 controller 文本不一致时
+  // 同步一次（例如 copyTaskToCreate 复用了任务参数）。仅在文本不同时改写，
+  // 避免用户正在输入时把光标重置到末尾。
+  void _syncMetadataControllers(AppState state) {
+    final duration = state.metadata.duration;
+    if (_durationController.text != duration) {
+      _durationController.value = TextEditingValue(
+        text: duration,
+        selection: TextSelection.collapsed(offset: duration.length),
+      );
+    }
+    final seed = state.metadata.seed;
+    if (_seedController.text != seed) {
+      _seedController.value = TextEditingValue(
+        text: seed,
+        selection: TextSelection.collapsed(offset: seed.length),
+      );
+    }
   }
 
   void _inspectMention(AppState state) {
@@ -849,10 +866,12 @@ class _ModeSelector extends StatelessWidget {
       children: [
         AppSegmentedControl<ModeId>(
           segments: modes
-              .map((mode) => AppSegment<ModeId>(
-                    value: mode.id,
-                    label: _tabLabelForMode(mode.id),
-                  ))
+              .map(
+                (mode) => AppSegment<ModeId>(
+                  value: mode.id,
+                  label: _tabLabelForMode(mode.id),
+                ),
+              )
               .toList(),
           selected: selectedMode,
           onChanged: onChanged,
@@ -905,7 +924,6 @@ class _ModeSelector extends StatelessWidget {
     );
   }
 }
-
 
 String _tabLabelForMode(ModeId mode) => switch (mode) {
   ModeId.text => '文本',
@@ -1324,7 +1342,10 @@ class _SelectedAttachmentCard extends StatelessWidget {
                           color: colorScheme.surface,
                           shape: BoxShape.circle,
                           boxShadow: [
-                            BoxShadow(blurRadius: 10, color: colorScheme.shadow),
+                            BoxShadow(
+                              blurRadius: 10,
+                              color: colorScheme.shadow,
+                            ),
                           ],
                         ),
                         child: Icon(

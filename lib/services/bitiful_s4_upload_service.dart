@@ -245,6 +245,9 @@ class BitifulS4UploadService {
   }
 
   Future<HttpClientResponse> _sendRequest(_SignedRequest request) async {
+    // 调用方会读取响应头/响应体，此处不在返回前 close client，否则会中断
+    // 响应流的消费；HttpClient 实例失去引用后由 GC 回收，连接在响应被
+    // 完整消费后会回到连接池。如需更严格的资源管理，应重构为调用方持有 client。
     final client = HttpClient();
     final httpRequest = await client.openUrl(request.method, request.uri);
     request.headers.forEach(httpRequest.headers.set);

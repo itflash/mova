@@ -367,6 +367,75 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
+/// 持有并复用单一 [TextEditingController]，并在 [value] 变化时同步文本。
+///
+/// 设置页的文本输入此前在 `build()` 内直接 `TextEditingController(text: value)`，
+/// 每次 rebuild 都会泄漏一个 controller。这里改为 Stateful，controller 仅在
+/// [initState] 创建、[dispose] 释放；外部 [value] 与当前文本不一致时才覆写
+/// （例如连接测试拉回 bucket 列表后回填），避免用户正在输入时把光标重置。
+class _SyncedTextField extends StatefulWidget {
+  const _SyncedTextField({
+    required this.value,
+    required this.onChanged,
+    this.obscureText = false,
+    this.maxLines,
+    this.style,
+    this.textAlign,
+    this.decoration,
+  });
+
+  final String value;
+  final ValueChanged<String> onChanged;
+  final bool obscureText;
+  final int? maxLines;
+  final TextStyle? style;
+  final TextAlign? textAlign;
+  final InputDecoration? decoration;
+
+  @override
+  State<_SyncedTextField> createState() => _SyncedTextFieldState();
+}
+
+class _SyncedTextFieldState extends State<_SyncedTextField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SyncedTextField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_controller.text != widget.value) {
+      _controller.value = TextEditingValue(
+        text: widget.value,
+        selection: TextSelection.collapsed(offset: widget.value.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      onChanged: widget.onChanged,
+      obscureText: widget.obscureText,
+      maxLines: widget.maxLines,
+      style: widget.style,
+      textAlign: widget.textAlign ?? TextAlign.start,
+      decoration: widget.decoration,
+    );
+  }
+}
+
 class _ValueEditorRow extends StatelessWidget {
   const _ValueEditorRow({
     required this.title,
@@ -389,9 +458,8 @@ class _ValueEditorRow extends StatelessWidget {
       builder: (context, compact) => Row(
         children: [
           Expanded(
-            child: TextField(
-              controller: TextEditingController(text: value)
-                ..selection = TextSelection.collapsed(offset: value.length),
+            child: _SyncedTextField(
+              value: value,
               onChanged: onChanged,
               textAlign: compact ? TextAlign.left : TextAlign.right,
               decoration: InputDecoration(
@@ -490,9 +558,7 @@ class _ProviderConfigHeader extends StatelessWidget {
             child: Icon(
               icon,
               size: 18,
-              color: isQiniu
-                  ? colorScheme.primary
-                  : colorScheme.tertiary,
+              color: isQiniu ? colorScheme.primary : colorScheme.tertiary,
             ),
           ),
           const SizedBox(width: 12),
@@ -564,13 +630,12 @@ class _BucketEditorRow extends StatelessWidget {
       builder: (context, compact) => Row(
         children: [
           Expanded(
-            child: TextField(
-              controller: TextEditingController(text: value)
-                ..selection = TextSelection.collapsed(offset: value.length),
+            child: _SyncedTextField(
+              value: value,
               onChanged: onChanged,
-              textAlign: compact ? TextAlign.left : TextAlign.right,
               maxLines: 1,
               style: Theme.of(context).textTheme.bodyLarge,
+              textAlign: compact ? TextAlign.left : TextAlign.right,
               decoration: InputDecoration(
                 hintText: placeholder,
                 isDense: true,
@@ -634,14 +699,13 @@ class _SecureRow extends StatelessWidget {
       builder: (context, compact) => Row(
         children: [
           Expanded(
-            child: TextField(
-              controller: TextEditingController(text: value)
-                ..selection = TextSelection.collapsed(offset: value.length),
+            child: _SyncedTextField(
+              value: value,
               onChanged: onChanged,
               obscureText: !reveal,
-              textAlign: compact ? TextAlign.left : TextAlign.right,
               maxLines: 1,
               style: Theme.of(context).textTheme.bodyLarge,
+              textAlign: compact ? TextAlign.left : TextAlign.right,
               decoration: const InputDecoration(
                 isDense: true,
                 contentPadding: EdgeInsets.symmetric(

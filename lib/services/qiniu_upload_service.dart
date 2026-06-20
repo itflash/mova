@@ -119,22 +119,27 @@ class QiniuUploadService {
       qiniuDate: qiniuDate,
     );
     final uri = Uri.parse('$qiniuUcApiHost$pathWithQuery');
-    final request = await HttpClient().openUrl(method, uri);
-    request.headers.set('Authorization', 'Qiniu $auth');
-    request.headers.set('X-Qiniu-Date', qiniuDate);
-    request.headers.set('Host', 'uc.qiniuapi.com');
+    final client = HttpClient();
+    try {
+      final request = await client.openUrl(method, uri);
+      request.headers.set('Authorization', 'Qiniu $auth');
+      request.headers.set('X-Qiniu-Date', qiniuDate);
+      request.headers.set('Host', 'uc.qiniuapi.com');
 
-    final response = await request.close();
-    final responseText = await response.transform(utf8.decoder).join();
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw HttpException(
-        responseText.isEmpty
-            ? '七牛请求失败（HTTP ${response.statusCode}）'
-            : responseText,
-        uri: uri,
-      );
+      final response = await request.close();
+      final responseText = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException(
+          responseText.isEmpty
+              ? '七牛请求失败（HTTP ${response.statusCode}）'
+              : responseText,
+          uri: uri,
+        );
+      }
+      return jsonDecode(responseText);
+    } finally {
+      client.close(force: false);
     }
-    return jsonDecode(responseText);
   }
 
   Future<void> _requestManagement({
@@ -153,20 +158,25 @@ class QiniuUploadService {
       qiniuDate: qiniuDate,
     );
     final uri = Uri.parse('$baseUrl$pathWithQuery');
-    final request = await HttpClient().openUrl(method, uri);
-    request.headers.set('Authorization', 'Qiniu $auth');
-    request.headers.set('X-Qiniu-Date', qiniuDate);
-    request.headers.set('Host', host);
+    final client = HttpClient();
+    try {
+      final request = await client.openUrl(method, uri);
+      request.headers.set('Authorization', 'Qiniu $auth');
+      request.headers.set('X-Qiniu-Date', qiniuDate);
+      request.headers.set('Host', host);
 
-    final response = await request.close();
-    final responseText = await response.transform(utf8.decoder).join();
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw HttpException(
-        responseText.isEmpty
-            ? '七牛删除失败（HTTP ${response.statusCode}）'
-            : responseText,
-        uri: uri,
-      );
+      final response = await request.close();
+      final responseText = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException(
+          responseText.isEmpty
+              ? '七牛删除失败（HTTP ${response.statusCode}）'
+              : responseText,
+          uri: uri,
+        );
+      }
+    } finally {
+      client.close(force: false);
     }
   }
 
@@ -238,29 +248,34 @@ class QiniuUploadService {
     body.add(file.bytes);
     body.add(utf8.encode('\r\n--$boundary--\r\n'));
 
-    final uri = Uri.parse(uploadHost);
-    final request = await HttpClient().postUrl(uri);
-    request.headers.set(
-      HttpHeaders.contentTypeHeader,
-      'multipart/form-data; boundary=$boundary',
-    );
-    request.add(body.toBytes());
-
-    final response = await request.close();
-    final responseText = await response.transform(utf8.decoder).join();
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw HttpException(
-        responseText.isEmpty
-            ? '上传失败（HTTP ${response.statusCode}）'
-            : responseText,
-        uri: uri,
+    final client = HttpClient();
+    try {
+      final uri = Uri.parse(uploadHost);
+      final request = await client.postUrl(uri);
+      request.headers.set(
+        HttpHeaders.contentTypeHeader,
+        'multipart/form-data; boundary=$boundary',
       );
+      request.add(body.toBytes());
+
+      final response = await request.close();
+      final responseText = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException(
+          responseText.isEmpty
+              ? '上传失败（HTTP ${response.statusCode}）'
+              : responseText,
+          uri: uri,
+        );
+      }
+      final decoded = jsonDecode(responseText);
+      if (decoded is! Map) {
+        throw const FormatException('七牛上传返回了无法解析的响应。');
+      }
+      return Map<String, Object?>.from(decoded);
+    } finally {
+      client.close(force: false);
     }
-    final decoded = jsonDecode(responseText);
-    if (decoded is! Map) {
-      throw const FormatException('七牛上传返回了无法解析的响应。');
-    }
-    return Map<String, Object?>.from(decoded);
   }
 
   String _base64UrlEncode(List<int> bytes) {
