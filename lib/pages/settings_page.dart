@@ -461,6 +461,7 @@ class _ValueEditorRow extends StatelessWidget {
             child: _SyncedTextField(
               value: value,
               onChanged: onChanged,
+              maxLines: 1,
               textAlign: compact ? TextAlign.left : TextAlign.right,
               decoration: InputDecoration(
                 hintText: placeholder,

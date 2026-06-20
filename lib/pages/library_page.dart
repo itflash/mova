@@ -273,9 +273,7 @@ class _LibraryFilterPanelState extends State<_LibraryFilterPanel> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      state.hasActiveLibraryFilters
-                          ? '已启用更多筛选'
-                          : '更多筛选',
+                      state.hasActiveLibraryFilters ? '已启用更多筛选' : '更多筛选',
                       style: Theme.of(context).textTheme.labelMedium,
                     ),
                     const SizedBox(width: 2),
@@ -285,9 +283,7 @@ class _LibraryFilterPanelState extends State<_LibraryFilterPanel> {
                       child: Icon(
                         Icons.expand_more_rounded,
                         size: 20,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurfaceVariant,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -333,22 +329,20 @@ class _LibraryFilterPanelState extends State<_LibraryFilterPanel> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      FilterChip(
-                        label: const Text(uncategorizedCategoryLabel),
+                      TagChip(
+                        label: uncategorizedCategoryLabel,
                         selected: state.selectedCategoryFilters.contains(
                           uncategorizedCategory,
                         ),
-                        showCheckmark: false,
                         onSelected: (_) =>
                             state.toggleCategoryFilter(uncategorizedCategory),
                       ),
                       ...state.categories.map(
-                        (category) => FilterChip(
-                          label: Text(category),
+                        (category) => TagChip(
+                          label: category,
                           selected: state.selectedCategoryFilters.contains(
                             category,
                           ),
-                          showCheckmark: false,
                           onSelected: (_) =>
                               state.toggleCategoryFilter(category),
                         ),
@@ -781,10 +775,7 @@ class _LibraryGroupedSliver extends StatelessWidget {
 }
 
 class _TaskGroupCard extends StatefulWidget {
-  const _TaskGroupCard({
-    required this.group,
-    required this.previewAttachments,
-  });
+  const _TaskGroupCard({required this.group, required this.previewAttachments});
 
   final AttachmentGroup group;
   final List<Attachment> previewAttachments;
@@ -813,10 +804,7 @@ class _TaskGroupCardState extends State<_TaskGroupCard> {
 }
 
 class _CollapsedTaskGroupCard extends StatelessWidget {
-  const _CollapsedTaskGroupCard({
-    required this.group,
-    required this.onTap,
-  });
+  const _CollapsedTaskGroupCard({required this.group, required this.onTap});
 
   final AttachmentGroup group;
   final VoidCallback onTap;
@@ -927,10 +915,7 @@ class _ExpandedTaskGroupCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 3,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(AppRadius.pill),
@@ -1367,7 +1352,9 @@ class _DeleteAttachmentSheetState extends State<_DeleteAttachmentSheet> {
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size.fromHeight(46),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppRadius.control),
+                          borderRadius: BorderRadius.circular(
+                            AppRadius.control,
+                          ),
                         ),
                       ),
                       child: const Text('保留素材'),
@@ -1388,7 +1375,9 @@ class _DeleteAttachmentSheetState extends State<_DeleteAttachmentSheet> {
                         foregroundColor: colorScheme.onError,
                         minimumSize: const Size.fromHeight(46),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppRadius.control),
+                          borderRadius: BorderRadius.circular(
+                            AppRadius.control,
+                          ),
                         ),
                       ),
                       child: Text(
@@ -1713,10 +1702,9 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                         runSpacing: 8,
                         children: _rolesForKind(attachment.kind)
                             .map(
-                              (role) => FilterChip(
-                                label: Text(_roleLabel(role)),
+                              (role) => TagChip(
+                                label: _roleLabel(role),
                                 selected: attachment.role == role,
-                                showCheckmark: false,
                                 onSelected: (_) => state.updateAttachmentRole(
                                   attachment.id,
                                   role,
@@ -1746,20 +1734,18 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          FilterChip(
-                            label: const Text(uncategorizedCategoryLabel),
+                          TagChip(
+                            label: uncategorizedCategoryLabel,
                             selected: attachment.category.trim().isEmpty,
-                            showCheckmark: false,
                             onSelected: (_) => state.updateAttachmentCategory(
                               attachment.id,
                               '',
                             ),
                           ),
                           ...state.categories.map(
-                            (category) => FilterChip(
-                              label: Text(category),
+                            (category) => TagChip(
+                              label: category,
                               selected: attachment.category == category,
-                              showCheckmark: false,
                               onSelected: (_) => state.updateAttachmentCategory(
                                 attachment.id,
                                 category,
@@ -2024,7 +2010,9 @@ class _AttachmentActionButton extends StatelessWidget {
         minimumSize: const Size(0, 38),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.control)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
       ),
       icon: Icon(icon, size: 18),
       label: Text(label),
@@ -2064,7 +2052,9 @@ class _AttachmentOverflowButton extends StatelessWidget {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         minimumSize: const Size(36, 36),
         padding: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.control)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
       ),
     );
   }

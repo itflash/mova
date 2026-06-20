@@ -4,6 +4,7 @@ import '../app/spacing.dart';
 import '../app/app_state.dart';
 import '../app/mock_data.dart';
 import '../app/models.dart';
+import '../pages/home_shell.dart';
 import 'attachment_media.dart';
 
 Future<Attachment?> showAttachmentPickerSheet({
@@ -272,9 +273,9 @@ class _PickerTaskGroupRow extends StatelessWidget {
     required this.onPick,
   });
 
-final AttachmentGroup group;
-final List<String> selectedIds;
-final ValueChanged<Attachment> onPick;
+  final AttachmentGroup group;
+  final List<String> selectedIds;
+  final ValueChanged<Attachment> onPick;
 
   @override
   Widget build(BuildContext context) {
@@ -405,14 +406,10 @@ class _CategoryChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return FilterChip(
-      label: Text(label),
+    return TagChip(
+      label: label,
       selected: selected,
-      showCheckmark: false,
       onSelected: (_) => onTap(),
-      selectedColor: colorScheme.primaryContainer,
-      checkmarkColor: colorScheme.primary,
     );
   }
 }

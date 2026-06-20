@@ -503,6 +503,55 @@ class StatusPill extends StatelessWidget {
   }
 }
 
+/// Lightweight selectable pill used for category tags and role pickers.
+///
+/// FilterChip carries a border + elevated surface that reads as a row of
+/// buttons; TagChip uses a flat tinted background instead, matching the
+/// existing [StatusPill] visual language for a calmer, more "tag" feel.
+class TagChip extends StatelessWidget {
+  const TagChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final String label;
+  final bool selected;
+  final ValueChanged<bool> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: selected ? colorScheme.primaryContainer : Colors.transparent,
+        border: selected
+            ? null
+            : Border.all(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: InkWell(
+        onTap: () => onSelected(!selected),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            color: selected
+                ? colorScheme.onPrimaryContainer
+                : colorScheme.onSurfaceVariant,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 Future<bool> confirmAction(
   BuildContext context, {
   required String title,
