@@ -1,12 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import '../app/spacing.dart';
 import 'package:video_player/video_player.dart';
 
 import '../app/app_scope.dart';
 import '../app/app_state.dart';
 import '../app/composition_models.dart';
 import '../app/models.dart';
+import '../widgets/app_dropdown.dart';
 import '../widgets/attachment_picker_sheet.dart';
 import 'home_shell.dart';
 
@@ -51,19 +53,16 @@ class CompositionPage extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    Tooltip(
-                      message: '添加本地视频',
-                      child: FilledButton.icon(
-                        onPressed: state.pickAndAddLocalCompositionVideo,
-                        icon: const Icon(Icons.add_rounded),
-                        label: const Text('本地视频'),
-                      ),
+                    FilledButton.icon(
+                      onPressed: state.pickAndAddLocalCompositionVideo,
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: const Text('本地视频'),
                     ),
-                    _NeutralActionButton(
+                    FilledButton.tonalIcon(
                       onPressed: () =>
                           _pickAndAddAttachmentVideo(context, state),
-                      icon: const Icon(Icons.video_library_rounded),
-                      label: '素材库视频',
+                      icon: const Icon(Icons.video_library_rounded, size: 18),
+                      label: const Text('素材库视频'),
                     ),
                   ],
                 ),
@@ -75,16 +74,13 @@ class CompositionPage extends StatelessWidget {
           UtilityPanel(
             child: Column(
               children: [
-                DropdownButtonFormField<String>(
-                  initialValue: project.output.resolution,
-                  decoration: const InputDecoration(labelText: '分辨率'),
+                AppDropdownField<String>(
+                  value: project.output.resolution,
+                  labelText: '分辨率',
                   items: const [
-                    DropdownMenuItem(
-                      value: 'follow-first',
-                      child: Text('跟随首个片段'),
-                    ),
-                    DropdownMenuItem(value: '720p', child: Text('720p')),
-                    DropdownMenuItem(value: '1080p', child: Text('1080p')),
+                    DropdownItemData(value: 'follow-first', label: '跟随首个片段'),
+                    DropdownItemData(value: '720p', label: '720p'),
+                    DropdownItemData(value: '1080p', label: '1080p'),
                   ],
                   onChanged: (value) {
                     if (value == null) return;
@@ -94,17 +90,14 @@ class CompositionPage extends StatelessWidget {
                   },
                 ),
                 const SizedBox(height: 14),
-                DropdownButtonFormField<String>(
-                  initialValue: project.output.ratio,
-                  decoration: const InputDecoration(labelText: '比例'),
+                AppDropdownField<String>(
+                  value: project.output.ratio,
+                  labelText: '比例',
                   items: const [
-                    DropdownMenuItem(
-                      value: 'follow-first',
-                      child: Text('跟随首个片段'),
-                    ),
-                    DropdownMenuItem(value: '16:9', child: Text('16:9')),
-                    DropdownMenuItem(value: '9:16', child: Text('9:16')),
-                    DropdownMenuItem(value: '1:1', child: Text('1:1')),
+                    DropdownItemData(value: 'follow-first', label: '跟随首个片段'),
+                    DropdownItemData(value: '16:9', label: '16:9'),
+                    DropdownItemData(value: '9:16', label: '9:16'),
+                    DropdownItemData(value: '1:1', label: '1:1'),
                   ],
                   onChanged: (value) {
                     if (value == null) return;
@@ -122,14 +115,14 @@ class CompositionPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                DropdownButtonFormField<CompositionAudioMode>(
-                  initialValue: project.audio.mode,
-                  decoration: const InputDecoration(labelText: '音频模式'),
+                AppDropdownField<CompositionAudioMode>(
+                  value: project.audio.mode,
+                  labelText: '音频模式',
                   items: CompositionAudioMode.values
                       .map(
-                        (mode) => DropdownMenuItem(
+                        (mode) => DropdownItemData(
                           value: mode,
-                          child: Text(_audioModeLabel(mode)),
+                          label: _audioModeLabel(mode),
                         ),
                       )
                       .toList(),
@@ -305,7 +298,7 @@ class _CompositionClipCard extends StatelessWidget {
                   height: 44,
                   decoration: BoxDecoration(
                     color: theme.colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(AppRadius.control),
                   ),
                   child: Icon(
                     Icons.movie_creation_outlined,
@@ -348,7 +341,7 @@ class _CompositionClipCard extends StatelessWidget {
                 clipBehavior: Clip.none,
                 children: [
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(AppRadius.control),
                     child: _CompositionClipPreview(uri: clip.sourceUri),
                   ),
                   Positioned(
@@ -360,7 +353,7 @@ class _CompositionClipCard extends StatelessWidget {
                         color: theme.colorScheme.surface,
                         shape: const CircleBorder(),
                         elevation: 2,
-                        shadowColor: const Color(0x22000000),
+                        shadowColor: theme.colorScheme.shadow,
                         child: InkWell(
                           onTap: () =>
                               state.pickAndReplaceCompositionVideo(clip.id),
@@ -389,14 +382,14 @@ class _CompositionClipCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            DropdownButtonFormField<CompositionTransitionType>(
-              initialValue: clip.transitionType,
-              decoration: const InputDecoration(labelText: '转场'),
+            AppDropdownField<CompositionTransitionType>(
+              value: clip.transitionType,
+              labelText: '转场',
               items: CompositionTransitionType.values
                   .map(
-                    (type) => DropdownMenuItem(
+                    (type) => DropdownItemData(
                       value: type,
-                      child: Text(_transitionLabel(type)),
+                      label: _transitionLabel(type),
                     ),
                   )
                   .toList(),
@@ -508,7 +501,7 @@ class _ClipIconActionButton extends StatelessWidget {
             padding: EdgeInsets.zero,
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(AppRadius.control),
             ),
             side: BorderSide(
               color:
@@ -552,7 +545,7 @@ class _NeutralActionButton extends StatelessWidget {
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(AppRadius.control),
             side: BorderSide(
               color: theme.colorScheme.outlineVariant.withValues(alpha: 0.7),
             ),
@@ -701,7 +694,7 @@ class _ClipTrimSheetState extends State<_ClipTrimSheet> {
               AspectRatio(
                 aspectRatio: 16 / 9,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   child: _error != null
                       ? _PreviewFallback(label: '预览失败：$_error')
                       : controller == null || !controller.value.isInitialized
@@ -864,7 +857,7 @@ class _TrimTimeline extends StatelessWidget {
                         height: 4,
                         decoration: BoxDecoration(
                           color: theme.colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(999),
+                          borderRadius: BorderRadius.circular(AppRadius.pill),
                         ),
                       ),
                     ),
@@ -875,7 +868,7 @@ class _TrimTimeline extends StatelessWidget {
                         height: 6,
                         decoration: BoxDecoration(
                           color: theme.colorScheme.primary,
-                          borderRadius: BorderRadius.circular(999),
+                          borderRadius: BorderRadius.circular(AppRadius.pill),
                         ),
                       ),
                     ),
@@ -1041,11 +1034,11 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
             ),
           ),
           Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Color(0x22000000), Color(0x8A000000)],
+                colors: [Colors.black.withValues(alpha: 0.13), Colors.black.withValues(alpha: 0.54)],
               ),
             ),
           ),

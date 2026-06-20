@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../widgets/app_segmented_control.dart';
+import '../app/spacing.dart';
 
 import '../app/app_scope.dart';
 import '../app/app_state.dart';
@@ -36,7 +38,6 @@ class _ImageCreatePageState extends State<ImageCreatePage> {
     _ensureImageToolResolution(state);
 
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final isEditMode = state.activeImageMode == ImageCreateMode.imageToImage;
     final hasPrompt = state.imagePrompt.trim().isNotEmpty;
     final hasRequiredReferences =
@@ -46,9 +47,7 @@ class _ImageCreatePageState extends State<ImageCreatePage> {
     final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
 
     return Scaffold(
-      backgroundColor: isDark
-          ? const Color(0xFF111317)
-          : const Color(0xFFF2F2F7),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         bottom: false,
         child: AppPageScaffold(
@@ -98,19 +97,41 @@ class _ImageCreatePageState extends State<ImageCreatePage> {
                               ? null
                               : () => _clearImagePrompt(context, state),
                         ),
-                        TextField(
-                          controller: _promptController,
-                          minLines: 4,
-                          maxLines: 7,
-                          onChanged: state.updateImagePrompt,
-                          decoration: InputDecoration(
-                            hintText: isEditMode
-                                ? '描述你要如何修改参考图，比如替换背景、改服装、变风格。'
-                                : '描述主体、风格、镜头、构图、光线、材质和氛围。',
+                        Padding(
+                          padding: EdgeInsets.only(
+                            bottom: keyboardOpen ? 56 : 0,
+                          ),
+                          child: Stack(
+                            children: [
+                              TextField(
+                                controller: _promptController,
+                                minLines: 4,
+                                maxLines: 7,
+                                onChanged: state.updateImagePrompt,
+                                decoration: InputDecoration(
+                                  hintText: isEditMode
+                                      ? '描述你要如何修改参考图，比如替换背景、改服装、变风格。'
+                                      : '描述主体、风格、镜头、构图、光线、材质和氛围。',
+                                  counterText: '',
+                                ),
+                              ),
+                              Positioned(
+                                right: 12,
+                                bottom: 8,
+                                child: Text(
+                                  '${state.imagePrompt.length}/2000',
+                                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: state.imagePrompt.length > 2000
+                                        ? Theme.of(context).colorScheme.error
+                                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
-                    ),
+                   ),
                   ),
                   const SizedBox(height: 16),
                   SectionLabel('参数'),
@@ -217,10 +238,11 @@ class _ImageCreatePageState extends State<ImageCreatePage> {
                   ],
                 ],
               ),
-              if (!keyboardOpen)
-                Positioned(
+              Positioned(
                   right: 20,
-                  bottom: 16,
+                  bottom: keyboardOpen
+                      ? MediaQuery.of(context).viewInsets.bottom + 12
+                      : 16,
                   child: FloatingSubmitBar(
                     resolution: state.imageToolResolution,
                     label: '提交',
@@ -320,24 +342,21 @@ class _ImageModeSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SegmentedButton<ImageCreateMode>(
+    return AppSegmentedControl<ImageCreateMode>(
       segments: const [
-        ButtonSegment<ImageCreateMode>(
+        AppSegment(
           value: ImageCreateMode.textToImage,
-          label: Text('文生图'),
-          icon: Icon(Icons.auto_awesome_outlined, size: 18),
+          icon: Icons.auto_awesome_outlined,
+          label: '文生图',
         ),
-        ButtonSegment<ImageCreateMode>(
+        AppSegment(
           value: ImageCreateMode.imageToImage,
-          label: Text('图生图'),
-          icon: Icon(Icons.draw_outlined, size: 18),
+          icon: Icons.draw_outlined,
+          label: '图生图',
         ),
       ],
-      selected: {state.activeImageMode},
-      onSelectionChanged: (selected) {
-        state.setActiveImageMode(selected.first);
-      },
-      emptySelectionAllowed: false,
+      selected: state.activeImageMode,
+      onChanged: state.setActiveImageMode,
     );
   }
 }
@@ -448,7 +467,7 @@ class _ImageReferenceSection extends StatelessWidget {
                   color: colorScheme.outlineVariant.withValues(alpha: 0.8),
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                 ),
               ),
               icon: Icon(
@@ -527,7 +546,7 @@ class _ImageReferenceCard extends StatelessWidget {
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
                   color: colorScheme.surface,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(
                     color: colorScheme.outlineVariant.withValues(alpha: 0.72),
                   ),
@@ -753,7 +772,7 @@ class _ImagePreviewDisclosureCardState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           InkWell(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppRadius.control),
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
@@ -835,7 +854,7 @@ class _DropdownRow<T> extends StatelessWidget {
                 isExpanded: true,
                 alignment: Alignment.centerRight,
                 value: value,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(AppRadius.card),
                 items: List.generate(items.length, (i) {
                   final label = displayItems != null
                       ? displayItems![i]

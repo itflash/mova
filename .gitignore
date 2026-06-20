@@ -49,3 +49,6 @@ app.*.map.json
 /android/key.properties
 /android/*.jks
 /android/*.keystore
+
+# Claude worktrees and local session state
+.claude/

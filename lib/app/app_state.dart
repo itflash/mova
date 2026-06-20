@@ -422,6 +422,9 @@ class AppState extends ChangeNotifier {
     if (effectiveVideoPrompt.trim().isEmpty) {
       messages.add('Prompt 不能为空。');
     }
+    if (effectiveVideoPrompt.length > 5000) {
+      messages.add('Prompt 不能超过 5000 字符。');
+    }
 
     if (activeMode == ModeId.text && selectedAttachments.isNotEmpty) {
       messages.add('文本生视频模式不接收素材。');
@@ -526,9 +529,10 @@ class AppState extends ChangeNotifier {
     try {
       final raw = await _storage.readState();
       if (raw != null && raw.trim().isNotEmpty) {
-        _restoreFromJson(jsonDecode(raw));
-        _syncSelectedAttachmentsFromPrompt();
-      }
+     _restoreFromJson(jsonDecode(raw));
+     _syncSelectedAttachmentsFromPrompt();
+     _backfillAttachmentSourceTaskId();
+   }
     } catch (error) {
       configStatusMessage = '本地配置读取失败：${_cleanError(error)}';
     } finally {
@@ -537,6 +541,48 @@ class AppState extends ChangeNotifier {
       _resumePollingAfterLifecycle();
     }
   }
+
+ /// 历史素材在落库时尚无 sourceTaskId 字段。加载持久化数据后，用图片任务的
+ /// imageResults[].attachmentId 反查 taskId，给 sourceTaskId 为空但确实产自
+ /// 某任务的素材补上归属，使其能在素材库里按任务折叠分组。已带 sourceTaskId
+ /// 的素材保持不变；回填结果会在下一次 savePersistedState 时随正常持久化落盘。
+ void _backfillAttachmentSourceTaskId() {
+   final index = buildAttachmentTaskIdIndex(tasks);
+   if (index.isEmpty) return;
+   var changed = false;
+   for (var i = 0; i < library.length; i++) {
+     final attachment = library[i];
+     if (attachment.sourceTaskId != null &&
+         attachment.sourceTaskId!.isNotEmpty) {
+       continue;
+     }
+     final taskId = index[attachment.id];
+     if (taskId == null) continue;
+     library[i] = attachment.copyWith(sourceTaskId: taskId);
+     changed = true;
+   }
+   if (changed) notifyListeners();
+ }
+
+ /// 由图片任务的 imageResults[].attachmentId 反查 taskId，建立
+ /// attachmentId -> taskId 索引。用于给历史素材回填 sourceTaskId，
+ /// 使其能在素材库里按任务折叠分组。
+ static Map<String, String> buildAttachmentTaskIdIndex(
+   Iterable<TaskRecord> tasks,
+ ) {
+   final index = <String, String>{};
+   for (final task in tasks) {
+     if (task.kind != TaskKind.image) continue;
+     for (final item in task.imageResults) {
+       final attachmentId = item.attachmentId;
+       if (attachmentId == null || attachmentId.isEmpty) continue;
+       if (!index.containsKey(attachmentId)) {
+         index[attachmentId] = task.id;
+       }
+     }
+   }
+   return index;
+ }
 
   void onAppLifecycleChanged(AppLifecycleState state) {
     final foreground = switch (state) {
@@ -1434,6 +1480,8 @@ class AppState extends ChangeNotifier {
         ),
       );
       currentTab = AppTab.tasks;
+      activeTaskTab = TaskTab.video;
+      showArchivedTasks = false;
       isSubmitting = false;
       notifyListeners();
       if (settings.autoPoll) {
@@ -1497,6 +1545,11 @@ class AppState extends ChangeNotifier {
     }
     if (imagePrompt.trim().isEmpty) {
       imageSubmitErrorMessage = 'Prompt 不能为空。';
+      notifyListeners();
+      return false;
+    }
+    if (imagePrompt.length > 2000) {
+      imageSubmitErrorMessage = 'Prompt 不能超过 2000 字符。';
       notifyListeners();
       return false;
     }
@@ -1574,6 +1627,7 @@ class AppState extends ChangeNotifier {
 
       currentTab = AppTab.tasks;
       activeTaskTab = TaskTab.image;
+      showArchivedTasks = false;
       isSubmittingImageTask = false;
       notifyListeners();
 
@@ -2227,6 +2281,7 @@ class AppState extends ChangeNotifier {
             labelOverride: 'AI图片-${DateTime.now().millisecondsSinceEpoch}',
             roleOverride: activeMetadata.role,
             categoryOverride: activeMetadata.category,
+            sourceTaskId: taskId,
           );
 
           final latestIndex = tasks.indexWhere((entry) => entry.id == taskId);
@@ -2339,6 +2394,12 @@ class AppState extends ChangeNotifier {
   Future<String?> saveCompositionExportToGallery() async {
     final result = compositionExportResult;
     if (result == null) return null;
+    if (!File(result.localPath).existsSync()) {
+      compositionExportResult = null;
+      compositionExportErrorMessage = '上次导出的文件已不存在，请重新导出。';
+      notifyListeners();
+      return null;
+    }
     final saved = await _mediaChannel.invokeMapMethod<String, Object?>(
       'saveVideoToGallery',
       {'sourcePath': result.localPath, 'fileName': result.fileName},
@@ -2351,6 +2412,12 @@ class AppState extends ChangeNotifier {
   }) async {
     final result = compositionExportResult;
     if (result == null) return null;
+    if (!File(result.localPath).existsSync()) {
+      compositionExportResult = null;
+      compositionExportErrorMessage = '上次导出的文件已不存在，请重新导出。';
+      notifyListeners();
+      return null;
+    }
     if (!isCurrentStorageConfigured) {
       throw StateError('请先在设置里填写完整的$currentStorageProviderLabel配置。');
     }
@@ -2702,6 +2769,7 @@ class AppState extends ChangeNotifier {
     String? labelOverride,
     AttachmentRole? roleOverride,
     String? categoryOverride,
+    String? sourceTaskId,
   }) async {
     final now = DateTime.now();
     final id = 'asset-${now.microsecondsSinceEpoch}-${library.length}';
@@ -2723,6 +2791,7 @@ class AppState extends ChangeNotifier {
         storageEndpoint: result.storageEndpoint,
         storageRegion: result.storageRegion,
         fileSizeBytes: result.fileSizeBytes,
+        sourceTaskId: sourceTaskId,
       ),
     );
     notifyListeners();
@@ -3478,6 +3547,16 @@ class AppState extends ChangeNotifier {
     compositionExportResult = _compositionExportResultFromJson(
       map['compositionExportResult'],
     );
+    // 上次导出的视频写在系统临时目录里，应用退出后可能被系统清理。
+    // 若文件不存在，丢弃缓存的导出结果，避免下次进入剪辑页/保存到相册/
+    // 导入素材库时读取空文件而抛异常。
+    final cachedExport = compositionExportResult;
+    if (cachedExport != null) {
+      final localPath = cachedExport.localPath.trim();
+      if (localPath.isEmpty || !File(localPath).existsSync()) {
+        compositionExportResult = null;
+      }
+    }
     prompt = _normalizedVideoPromptForMode(prompt, activeMode);
   }
 
@@ -3722,6 +3801,7 @@ class AppState extends ChangeNotifier {
     'storageEndpoint': value.storageEndpoint,
     'storageRegion': value.storageRegion,
     'fileSizeBytes': value.fileSizeBytes,
+    'sourceTaskId': value.sourceTaskId,
   };
 
   Map<String, Object?> _recentVideoSourceToJson(RecentVideoSource value) => {
@@ -3791,6 +3871,7 @@ class AppState extends ChangeNotifier {
       fileSizeBytes: map['fileSizeBytes'] is num
           ? (map['fileSizeBytes'] as num).round()
           : null,
+      sourceTaskId: _nullableStringValue(map['sourceTaskId']),
     );
   }
 

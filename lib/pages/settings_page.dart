@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app/spacing.dart';
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 
 import '../app/app_scope.dart';
@@ -26,7 +27,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return AppPageScaffold(
       eyebrow: 'Config',
       title: '设置',
-      subtitle: '把账号、存储和默认偏好收在一处，保持日常配置足够直接。',
+      subtitle: '账号、存储与偏好设置集中管理。',
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 6, 20, 28),
         children: [
@@ -419,46 +420,36 @@ class _StorageProviderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return _SettingsInputRow(
-      title: '存储提供商',
-      builder: (context, compact) => Container(
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x12000000),
-              blurRadius: 16,
-              offset: Offset(0, 6),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('存储提供商', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<StorageProvider>(
+              segments: const [
+                ButtonSegment(
+                  value: StorageProvider.qiniu,
+                  icon: Icon(CupertinoIcons.cloud),
+                  label: Text('七牛云'),
+                ),
+                ButtonSegment(
+                  value: StorageProvider.bitifulS4,
+                  icon: Icon(CupertinoIcons.layers_alt),
+                  label: Text('缤纷云 S4'),
+                ),
+              ],
+              selected: {value},
+              showSelectedIcon: false,
+              onSelectionChanged: (selection) {
+                if (selection.isNotEmpty) onChanged(selection.first);
+              },
             ),
-          ],
-        ),
-        padding: const EdgeInsets.all(4),
-        child: Row(
-          children: [
-            Expanded(
-              child: _ProviderSegment(
-                label: '七牛云',
-                icon: CupertinoIcons.cloud,
-                hint: '对象存储',
-                selected: value == StorageProvider.qiniu,
-                position: _ProviderSegmentPosition.left,
-                onTap: () => onChanged(StorageProvider.qiniu),
-              ),
-            ),
-            Expanded(
-              child: _ProviderSegment(
-                label: '缤纷云 S4',
-                icon: CupertinoIcons.layers_alt,
-                hint: 'Bitiful 对象存储',
-                selected: value == StorageProvider.bitifulS4,
-                position: _ProviderSegmentPosition.right,
-                onTap: () => onChanged(StorageProvider.bitifulS4),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -483,7 +474,7 @@ class _ProviderConfigHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHigh.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Row(
         children: [
@@ -492,16 +483,16 @@ class _ProviderConfigHeader extends StatelessWidget {
             height: 40,
             decoration: BoxDecoration(
               color: isQiniu
-                  ? const Color(0xFFE9F2FF)
-                  : const Color(0xFFFFF2E8),
-              borderRadius: BorderRadius.circular(14),
+                  ? colorScheme.primaryContainer
+                  : colorScheme.tertiaryContainer,
+              borderRadius: BorderRadius.circular(AppRadius.control),
             ),
             child: Icon(
               icon,
               size: 18,
               color: isQiniu
-                  ? const Color(0xFF1570EF)
-                  : const Color(0xFFB54708),
+                  ? colorScheme.primary
+                  : colorScheme.tertiary,
             ),
           ),
           const SizedBox(width: 12),
@@ -536,7 +527,7 @@ class _ProviderConfigPanel extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(
           color: Theme.of(
             context,
@@ -545,124 +536,6 @@ class _ProviderConfigPanel extends StatelessWidget {
       ),
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
       child: child,
-    );
-  }
-}
-
-enum _ProviderSegmentPosition { left, right }
-
-class _ProviderSegment extends StatelessWidget {
-  const _ProviderSegment({
-    required this.label,
-    required this.icon,
-    required this.hint,
-    required this.selected,
-    required this.position,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final String hint;
-  final bool selected;
-  final _ProviderSegmentPosition position;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final borderRadius = BorderRadius.horizontal(
-      left: position == _ProviderSegmentPosition.left
-          ? const Radius.circular(16)
-          : Radius.zero,
-      right: position == _ProviderSegmentPosition.right
-          ? const Radius.circular(16)
-          : Radius.zero,
-    );
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-      decoration: BoxDecoration(
-        gradient: selected
-            ? LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  colorScheme.primary,
-                  colorScheme.primary.withValues(alpha: 0.84),
-                ],
-              )
-            : null,
-        color: selected ? null : Colors.transparent,
-        borderRadius: borderRadius,
-        boxShadow: selected
-            ? const [
-                BoxShadow(
-                  color: Color(0x22000000),
-                  blurRadius: 12,
-                  offset: Offset(0, 5),
-                ),
-              ]
-            : null,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: borderRadius,
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      icon,
-                      size: 15,
-                      color: selected
-                          ? colorScheme.onPrimary
-                          : colorScheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: selected
-                              ? colorScheme.onPrimary
-                              : colorScheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  hint,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: selected
-                        ? colorScheme.onPrimary.withValues(alpha: 0.82)
-                        : colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -808,7 +681,7 @@ class _SettingsHintCard extends StatelessWidget {
       width: double.infinity,
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         border: Border.all(
           color: colorScheme.outlineVariant.withValues(alpha: 0.42),
         ),

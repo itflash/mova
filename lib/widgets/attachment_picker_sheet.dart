@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app/spacing.dart';
 
 import '../app/app_state.dart';
 import '../app/mock_data.dart';
@@ -159,16 +160,24 @@ class _AttachmentPickerSheetState extends State<_AttachmentPickerSheet> {
                 ),
               )
             else
-              ...attachments.map(
-                (attachment) => Padding(
+              ...groupAttachmentsByTask(attachments).map(
+                (group) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: _AttachmentPickerCard(
-                    attachment: attachment,
-                    selected: widget.state.selectedAttachmentIds.contains(
-                      attachment.id,
-                    ),
-                    onTap: () => Navigator.of(context).pop(attachment),
-                  ),
+                  child: group.isTaskGroup
+                      ? _PickerTaskGroupRow(
+                          group: group,
+                          selectedIds: widget.state.selectedAttachmentIds,
+                          onPick: (attachment) =>
+                              Navigator.of(context).pop(attachment),
+                        )
+                      : _AttachmentPickerCard(
+                          attachment: group.representative,
+                          selected: widget.state.selectedAttachmentIds.contains(
+                            group.representative.id,
+                          ),
+                          onTap: () =>
+                              Navigator.of(context).pop(group.representative),
+                        ),
                 ),
               ),
           ],
@@ -193,10 +202,10 @@ class _AttachmentPickerCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Material(
-      color: const Color(0xFFF5F6FA),
-      borderRadius: BorderRadius.circular(24),
+      color: colorScheme.surface,
+      borderRadius: BorderRadius.circular(AppRadius.card),
       child: InkWell(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(10),
@@ -249,6 +258,134 @@ class _AttachmentPickerCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 同任务多素材的横向选择行：一行展示该任务的全部产出，点哪张就选哪张。
+class _PickerTaskGroupRow extends StatelessWidget {
+  const _PickerTaskGroupRow({
+    required this.group,
+    required this.selectedIds,
+    required this.onPick,
+  });
+
+final AttachmentGroup group;
+final List<String> selectedIds;
+final ValueChanged<Attachment> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final representative = group.representative;
+    return Material(
+      color: colorScheme.surface,
+      borderRadius: BorderRadius.circular(AppRadius.card),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                  ),
+                  child: Text(
+                    '同任务 ${group.count} 张',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: colorScheme.onPrimaryContainer,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${displayCategoryLabel(representative.category)} · ${formatDateTime(representative.createdAt)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 100,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: group.items.length,
+                itemBuilder: (context, index) {
+                  final attachment = group.items[index];
+                  final selected = selectedIds.contains(attachment.id);
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(AppRadius.control),
+                    onTap: () => onPick(attachment),
+                    child: Container(
+                      width: 100,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(AppRadius.control),
+                        border: Border.all(
+                          color: selected
+                              ? colorScheme.primary
+                              : colorScheme.outlineVariant.withValues(
+                                  alpha: 0.5,
+                                ),
+                          width: selected ? 1.5 : 1,
+                        ),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(AppRadius.control),
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: AttachmentThumb(
+                                attachment: attachment,
+                                width: 100,
+                                height: 100,
+                                radius: 0,
+                                overlayLabel: attachment.label,
+                              ),
+                            ),
+                            if (selected)
+                              Positioned(
+                                top: 4,
+                                right: 4,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.primary,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  padding: const EdgeInsets.all(2),
+                                  child: Icon(
+                                    Icons.check_rounded,
+                                    size: 14,
+                                    color: colorScheme.onPrimary,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+              ),
+            ),
+          ],
         ),
       ),
     );

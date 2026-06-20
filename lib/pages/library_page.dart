@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app/spacing.dart';
 import 'package:flutter/services.dart';
 
 import '../app/app_scope.dart';
@@ -10,6 +11,7 @@ import 'home_shell.dart';
 import 'image_create_page.dart';
 import 'video_frame_capture_page.dart';
 import '../widgets/attachment_media.dart';
+import '../widgets/app_dropdown.dart';
 
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});
@@ -142,37 +144,35 @@ class _LibraryPageState extends State<LibraryPage> {
                 child: _LibraryEmptyState(state: appState),
               ),
             )
-          else
+          else if (isCompactMode)
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
               sliver: SliverList.separated(
                 itemCount: visibleAttachments.length,
                 itemBuilder: (context, index) {
                   final attachment = visibleAttachments[index];
-                  if (isCompactMode) {
-                    return _CompactAttachmentRow(
-                      attachment: attachment,
-                      previewAttachments: visibleAttachments,
-                      selected: _selectedAttachmentIds.contains(attachment.id),
-                      onSelectedChanged: (selected) {
-                        setState(() {
-                          if (selected) {
-                            _selectedAttachmentIds.add(attachment.id);
-                          } else {
-                            _selectedAttachmentIds.remove(attachment.id);
-                          }
-                        });
-                      },
-                    );
-                  }
-                  return _AttachmentCard(
+                  return _CompactAttachmentRow(
                     attachment: attachment,
                     previewAttachments: visibleAttachments,
+                    selected: _selectedAttachmentIds.contains(attachment.id),
+                    onSelectedChanged: (selected) {
+                      setState(() {
+                        if (selected) {
+                          _selectedAttachmentIds.add(attachment.id);
+                        } else {
+                          _selectedAttachmentIds.remove(attachment.id);
+                        }
+                      });
+                    },
                   );
                 },
-                separatorBuilder: (_, _) =>
-                    SizedBox(height: isCompactMode ? 8 : 16),
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
               ),
+            )
+          else
+            _LibraryGroupedSliver(
+              groups: groupAttachmentsByTask(visibleAttachments),
+              previewAttachments: visibleAttachments,
             ),
         ],
       ),
@@ -248,14 +248,14 @@ class _LibraryFilterPanelState extends State<_LibraryFilterPanel> {
             ),
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<LibraryFilter>(
-            initialValue: state.libraryFilter,
-            decoration: const InputDecoration(labelText: '素材类型'),
+          AppDropdownField<LibraryFilter>(
+            value: state.libraryFilter,
+            labelText: '素材类型',
             items: const [
-              DropdownMenuItem(value: LibraryFilter.all, child: Text('全部')),
-              DropdownMenuItem(value: LibraryFilter.image, child: Text('图片')),
-              DropdownMenuItem(value: LibraryFilter.video, child: Text('视频')),
-              DropdownMenuItem(value: LibraryFilter.audio, child: Text('音频')),
+              DropdownItemData(value: LibraryFilter.all, label: '全部'),
+              DropdownItemData(value: LibraryFilter.image, label: '图片'),
+              DropdownItemData(value: LibraryFilter.video, label: '视频'),
+              DropdownItemData(value: LibraryFilter.audio, label: '音频'),
             ],
             onChanged: (value) {
               if (value != null) {
@@ -266,13 +266,35 @@ class _LibraryFilterPanelState extends State<_LibraryFilterPanel> {
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  state.hasActiveLibraryFilters ? '已启用更多筛选' : '更多筛选',
-                  style: Theme.of(context).textTheme.labelMedium,
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _showAdvanced = !_showAdvanced),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      state.hasActiveLibraryFilters
+                          ? '已启用更多筛选'
+                          : '更多筛选',
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                    const SizedBox(width: 2),
+                    AnimatedRotation(
+                      turns: _showAdvanced ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      child: Icon(
+                        Icons.expand_more_rounded,
+                        size: 20,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              if (state.hasActiveLibraryFilters)
+              if (state.hasActiveLibraryFilters) ...[
+                const Spacer(),
                 TextButton(
                   onPressed: () {
                     state.clearLibraryFilters();
@@ -282,15 +304,7 @@ class _LibraryFilterPanelState extends State<_LibraryFilterPanel> {
                   },
                   child: const Text('清空'),
                 ),
-              IconButton(
-                tooltip: _showAdvanced ? '收起更多筛选' : '展开更多筛选',
-                onPressed: () => setState(() => _showAdvanced = !_showAdvanced),
-                icon: AnimatedRotation(
-                  turns: _showAdvanced ? 0.5 : 0,
-                  duration: const Duration(milliseconds: 180),
-                  child: const Icon(Icons.expand_more_rounded),
-                ),
-              ),
+              ],
             ],
           ),
           AnimatedCrossFade(
@@ -460,7 +474,7 @@ class _CompactAttachmentRow extends StatelessWidget {
             onChanged: (value) => onSelectedChanged(value ?? false),
           ),
           InkWell(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(AppRadius.control),
             onTap: canAccess
                 ? () => showAttachmentPreviewSheet(
                     context,
@@ -729,6 +743,290 @@ Future<void> _openCategoryManagement(BuildContext context) async {
 
 enum _AttachmentMenuAction { saveToGallery, copyUrl }
 
+/// 渲染按任务分组后的素材列表：
+/// - 单素材组（含非任务素材、本地导入、合成、抓帧）→ 直接渲染 _AttachmentCard
+/// - 多素材任务组 → 折叠成一张 _TaskGroupCard，点开后竖向展开 N 张原卡
+class _LibraryGroupedSliver extends StatelessWidget {
+  const _LibraryGroupedSliver({
+    required this.groups,
+    required this.previewAttachments,
+  });
+
+  final List<AttachmentGroup> groups;
+  final List<Attachment> previewAttachments;
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+      sliver: SliverList.separated(
+        itemCount: groups.length,
+        itemBuilder: (context, index) {
+          final group = groups[index];
+          if (!group.isTaskGroup) {
+            return _AttachmentCard(
+              attachment: group.representative,
+              previewAttachments: previewAttachments,
+            );
+          }
+          return _TaskGroupCard(
+            group: group,
+            previewAttachments: previewAttachments,
+          );
+        },
+        separatorBuilder: (_, _) => const SizedBox(height: 16),
+      ),
+    );
+  }
+}
+
+class _TaskGroupCard extends StatefulWidget {
+  const _TaskGroupCard({
+    required this.group,
+    required this.previewAttachments,
+  });
+
+  final AttachmentGroup group;
+  final List<Attachment> previewAttachments;
+
+  @override
+  State<_TaskGroupCard> createState() => _TaskGroupCardState();
+}
+
+class _TaskGroupCardState extends State<_TaskGroupCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_expanded) {
+      return _ExpandedTaskGroupCard(
+        group: widget.group,
+        previewAttachments: widget.previewAttachments,
+        onCollapse: () => setState(() => _expanded = false),
+      );
+    }
+    return _CollapsedTaskGroupCard(
+      group: widget.group,
+      onTap: () => setState(() => _expanded = true),
+    );
+  }
+}
+
+class _CollapsedTaskGroupCard extends StatelessWidget {
+  const _CollapsedTaskGroupCard({
+    required this.group,
+    required this.onTap,
+  });
+
+  final AttachmentGroup group;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final representative = group.representative;
+    final extra = group.count - 1;
+    final categoryLabel = displayCategoryLabel(representative.category);
+    final timestamp = formatDateTime(representative.createdAt);
+
+    return UtilityPanel(
+      padding: const EdgeInsets.all(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(2),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _StackedThumbnails(group: group),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(AppRadius.pill),
+                          ),
+                          child: Text(
+                            '同任务 ${group.count} 张',
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: colorScheme.onPrimaryContainer,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      representative.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      extra > 0
+                          ? '$categoryLabel · 含 ${group.count} 张产出 · $timestamp'
+                          : '$categoryLabel · $timestamp',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.unfold_more_rounded,
+                size: 20,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ExpandedTaskGroupCard extends StatelessWidget {
+  const _ExpandedTaskGroupCard({
+    required this.group,
+    required this.previewAttachments,
+    required this.onCollapse,
+  });
+
+  final AttachmentGroup group;
+  final List<Attachment> previewAttachments;
+  final VoidCallback onCollapse;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return UtilityPanel(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                ),
+                child: Text(
+                  '同任务 ${group.count} 张',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: onCollapse,
+                icon: const Icon(Icons.unfold_less_rounded, size: 18),
+                label: const Text('收起'),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(0, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (var i = 0; i < group.items.length; i++) ...[
+            _AttachmentCard(
+              attachment: group.items[i],
+              previewAttachments: previewAttachments,
+            ),
+            if (i != group.items.length - 1) const SizedBox(height: 12),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 折叠态左侧的堆叠缩略图：底层是后面几张的小卡，上层是首张完整卡。
+class _StackedThumbnails extends StatelessWidget {
+  const _StackedThumbnails({required this.group});
+
+  final AttachmentGroup group;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    const mainSize = 76.0;
+    const offset = 6.0;
+    final stackDepth = group.count > 3 ? 2 : (group.count - 1);
+    final stackWidth = mainSize + offset * stackDepth;
+    final stackHeight = mainSize + offset * stackDepth;
+
+    return SizedBox(
+      width: stackWidth,
+      height: stackHeight,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          for (var i = stackDepth; i >= 1; i--)
+            Positioned(
+              left: i * offset,
+              top: i * offset,
+              child: Container(
+                width: mainSize,
+                height: mainSize,
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(AppRadius.control),
+                  border: Border.all(
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  ),
+                ),
+              ),
+            ),
+          Positioned(
+            left: 0,
+            top: 0,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.control),
+              child: AttachmentThumb(
+                attachment: group.representative,
+                width: mainSize,
+                height: mainSize,
+                radius: 0,
+                overlayLabel: group.representative.label,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AttachmentCard extends StatefulWidget {
   const _AttachmentCard({
     required this.attachment,
@@ -811,7 +1109,7 @@ class _BatchDeleteAttachmentSheetState
                     height: 42,
                     decoration: BoxDecoration(
                       color: colorScheme.errorContainer,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(AppRadius.control),
                     ),
                     child: Icon(
                       Icons.delete_sweep_rounded,
@@ -844,7 +1142,7 @@ class _BatchDeleteAttachmentSheetState
                   color: colorScheme.surfaceContainerHighest.withValues(
                     alpha: 0.6,
                   ),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -871,7 +1169,7 @@ class _BatchDeleteAttachmentSheetState
               Container(
                 decoration: BoxDecoration(
                   color: colorScheme.surface,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(
                     color: colorScheme.outlineVariant.withValues(alpha: 0.55),
                   ),
@@ -970,7 +1268,7 @@ class _DeleteAttachmentSheetState extends State<_DeleteAttachmentSheet> {
                     height: 42,
                     decoration: BoxDecoration(
                       color: colorScheme.errorContainer,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(AppRadius.control),
                     ),
                     child: Icon(
                       Icons.delete_forever_rounded,
@@ -1003,7 +1301,7 @@ class _DeleteAttachmentSheetState extends State<_DeleteAttachmentSheet> {
                   color: colorScheme.surfaceContainerHighest.withValues(
                     alpha: 0.6,
                   ),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1030,7 +1328,7 @@ class _DeleteAttachmentSheetState extends State<_DeleteAttachmentSheet> {
               Container(
                 decoration: BoxDecoration(
                   color: colorScheme.surface,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(
                     color: colorScheme.outlineVariant.withValues(alpha: 0.55),
                   ),
@@ -1069,7 +1367,7 @@ class _DeleteAttachmentSheetState extends State<_DeleteAttachmentSheet> {
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size.fromHeight(46),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(AppRadius.control),
                         ),
                       ),
                       child: const Text('保留素材'),
@@ -1090,7 +1388,7 @@ class _DeleteAttachmentSheetState extends State<_DeleteAttachmentSheet> {
                         foregroundColor: colorScheme.onError,
                         minimumSize: const Size.fromHeight(46),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(AppRadius.control),
                         ),
                       ),
                       child: Text(
@@ -1204,7 +1502,7 @@ class _AttachmentCardState extends State<_AttachmentCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               InkWell(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(AppRadius.control),
                 onTap: canAccess
                     ? () => showAttachmentPreviewSheet(
                         context,
@@ -1401,7 +1699,7 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                   color: colorScheme.surfaceContainerHighest.withValues(
                     alpha: 0.35,
                   ),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
@@ -1630,7 +1928,7 @@ class _AttachmentThumbWithFileSize extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
               decoration: BoxDecoration(
                 color: colorScheme.surface.withValues(alpha: 0.78),
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
                 border: Border.all(
                   color: colorScheme.outlineVariant.withValues(alpha: 0.38),
                 ),
@@ -1726,7 +2024,7 @@ class _AttachmentActionButton extends StatelessWidget {
         minimumSize: const Size(0, 38),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.control)),
       ),
       icon: Icon(icon, size: 18),
       label: Text(label),
@@ -1766,7 +2064,7 @@ class _AttachmentOverflowButton extends StatelessWidget {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         minimumSize: const Size(36, 36),
         padding: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.control)),
       ),
     );
   }

@@ -1,7 +1,10 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app/app_scope.dart';
+import '../app/spacing.dart';
 import '../app/models.dart';
 import 'composition_page.dart';
 import 'create_page.dart';
@@ -24,41 +27,19 @@ class HomeShell extends StatelessWidget {
     };
 
     return Scaffold(
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFF7F8FC), Color(0xFFF1F2F6)],
+      body: SafeArea(
+        bottom: false,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          child: KeyedSubtree(
+            key: ValueKey(state.currentTab),
+            child: pages[state.currentTab]!,
           ),
         ),
-        child: Stack(
-          children: [
-            const _BackgroundGlow(
-              alignment: Alignment.topCenter,
-              color: Color(0x26DDEBFF),
-              size: 320,
-            ),
-            SafeArea(
-              bottom: false,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                child: KeyedSubtree(
-                  key: ValueKey(state.currentTab),
-                  child: pages[state.currentTab]!,
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-        child: _BottomDock(
-          selectedIndex: state.currentTab.index,
-          onChanged: (index) => state.setCurrentTab(AppTab.values[index]),
-        ),
+      bottomNavigationBar: _BottomDock(
+        selectedIndex: state.currentTab.index,
+        onChanged: (index) => state.setCurrentTab(AppTab.values[index]),
       ),
     );
   }
@@ -159,13 +140,13 @@ class UtilityPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadius.card),
       child: Material(
         color: colorScheme.surface,
-        shadowColor: const Color(0x0F101828),
-        elevation: 0.5,
+        shadowColor: colorScheme.shadow,
+        elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           side: BorderSide(
             color: colorScheme.outlineVariant.withValues(alpha: 0.55),
           ),
@@ -271,7 +252,7 @@ class CapsuleButton extends StatelessWidget {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
         textStyle: Theme.of(context).textTheme.labelLarge,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.control)),
       ),
       icon: icon == null ? const SizedBox.shrink() : Icon(icon, size: 18),
       label: Text(label),
@@ -315,7 +296,7 @@ class ToolIconButton extends StatelessWidget {
           fixedSize: const Size(36, 36),
           padding: EdgeInsets.zero,
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.control)),
         ),
         icon: Icon(icon, size: 19),
       ),
@@ -349,7 +330,7 @@ class CreditBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(99),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
         border: Border.all(color: color.withValues(alpha: 0.22)),
       ),
       child: Row(
@@ -406,7 +387,7 @@ class FloatingSubmitBar extends StatelessWidget {
         elevation: 2,
         shadowColor: Colors.black.withValues(alpha: 0.10),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           side: BorderSide(
             color: enabled
                 ? colorScheme.primary.withValues(alpha: 0.22)
@@ -414,7 +395,7 @@ class FloatingSubmitBar extends StatelessWidget {
           ),
         ),
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           onTap: onPressed,
           child: SizedBox(
             height: 44,
@@ -558,15 +539,15 @@ Future<bool> confirmAction(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
                 decoration: BoxDecoration(
                   color: colorScheme.surface,
-                  borderRadius: BorderRadius.circular(30),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(
                     color: colorScheme.outlineVariant.withValues(alpha: 0.5),
                   ),
-                  boxShadow: const [
+                  boxShadow: [
                     BoxShadow(
-                      color: Color(0x12000000),
+                      color: colorScheme.shadow.withValues(alpha: 0.07),
                       blurRadius: 30,
-                      offset: Offset(0, 12),
+                      offset: const Offset(0, 12),
                     ),
                   ],
                 ),
@@ -643,7 +624,7 @@ Future<bool> confirmAction(
                             ? colorScheme.onError
                             : colorScheme.onPrimary,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: BorderRadius.circular(AppRadius.control),
                         ),
                       ),
                       child: Text(confirmLabel),
@@ -655,7 +636,7 @@ Future<bool> confirmAction(
                         minimumSize: const Size(double.infinity, 46),
                         foregroundColor: colorScheme.onSurfaceVariant,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(AppRadius.control),
                         ),
                       ),
                       child: const Text('取消'),
@@ -690,80 +671,94 @@ class _BottomDock extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onChanged;
 
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Material(
-      color: colorScheme.surface.withValues(alpha: 0.96),
-      elevation: 2,
-      shadowColor: const Color(0x12000000),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.55),
-        ),
-      ),
-      child: NavigationBar(
-        height: 72,
-        selectedIndex: selectedIndex,
-        onDestinationSelected: onChanged,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.auto_awesome_outlined),
-            selectedIcon: Icon(Icons.auto_awesome),
-            label: '创作',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.photo_library_outlined),
-            selectedIcon: Icon(Icons.photo_library),
-            label: '素材',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.content_cut_outlined),
-            selectedIcon: Icon(Icons.content_cut),
-            label: '剪辑',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.video_collection_outlined),
-            selectedIcon: Icon(Icons.video_collection),
-            label: '任务',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.tune_outlined),
-            selectedIcon: Icon(Icons.tune),
-            label: '设置',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BackgroundGlow extends StatelessWidget {
-  const _BackgroundGlow({
-    required this.alignment,
-    required this.color,
-    required this.size,
-  });
-
-  final Alignment alignment;
-  final Color color;
-  final double size;
+  static const _items = [
+    (
+      icon: Icons.auto_awesome_outlined,
+      activeIcon: Icons.auto_awesome,
+      label: '创作',
+    ),
+    (
+      icon: Icons.photo_library_outlined,
+      activeIcon: Icons.photo_library,
+      label: '素材',
+    ),
+    (
+      icon: Icons.content_cut_outlined,
+      activeIcon: Icons.content_cut,
+      label: '剪辑',
+    ),
+    (
+      icon: Icons.video_collection_outlined,
+      activeIcon: Icons.video_collection,
+      label: '任务',
+    ),
+    (
+      icon: Icons.tune_outlined,
+      activeIcon: Icons.tune,
+      label: '设置',
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: alignment,
-      child: IgnorePointer(
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(
-              colors: [color, color.withValues(alpha: 0)],
-            ),
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    // Frosted background tint: lighter on dark, more opaque on light.
+    final barColor = colorScheme.surface.withValues(alpha: isDark ? 0.72 : 0.85);
+    final activeColor = colorScheme.primary;
+    final inactiveColor = colorScheme.onSurfaceVariant.withValues(alpha: 0.6);
+
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: ColoredBox(
+          color: barColor,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Hairline separator like iOS UITabBar.
+              Container(
+                height: 0.5,
+                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+              SafeArea(
+                top: false,
+                child: SizedBox(
+                  height: 49,
+                  child: Row(
+                    children: List.generate(_items.length, (i) {
+                      final item = _items[i];
+                      final selected = i == selectedIndex;
+                      final color = selected ? activeColor : inactiveColor;
+                      final icon = selected ? item.activeIcon : item.icon;
+                      return Expanded(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => onChanged(i),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(icon, size: 24, color: color),
+                              const SizedBox(height: 2),
+                              Text(
+                                item.label,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: color,
+                                  fontSize: 10,
+                                  height: 1,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

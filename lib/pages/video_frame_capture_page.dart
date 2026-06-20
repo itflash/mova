@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import '../app/spacing.dart';
 import 'package:video_player/video_player.dart';
 
 import '../app/app_scope.dart';
@@ -260,7 +261,7 @@ class _VideoFrameCapturePageState extends State<VideoFrameCapturePage> {
                     width: double.infinity,
                     decoration: BoxDecoration(
                       color: colorScheme.surfaceContainerHigh,
-                      borderRadius: BorderRadius.circular(30),
+                      borderRadius: BorderRadius.circular(AppRadius.card),
                       border: Border.all(
                         color: colorScheme.outlineVariant.withValues(alpha: 0.45),
                       ),
@@ -277,7 +278,7 @@ class _VideoFrameCapturePageState extends State<VideoFrameCapturePage> {
                             children: [
                               Expanded(
                                 child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(24),
+                                  borderRadius: BorderRadius.circular(AppRadius.card),
                                   child: ColoredBox(
                                     color: Colors.black,
                                     child: Center(
@@ -370,7 +371,7 @@ class _VideoFrameCapturePageState extends State<VideoFrameCapturePage> {
                     style: FilledButton.styleFrom(
                       minimumSize: const Size.fromHeight(54),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: BorderRadius.circular(AppRadius.card),
                       ),
                     ),
                   ),
@@ -502,7 +503,7 @@ class _CapturedFrameResultSheetState extends State<_CapturedFrameResultSheet> {
             ),
             const SizedBox(height: 16),
             ClipRRect(
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(AppRadius.card),
               child: Image.file(
                 imageFile,
                 fit: BoxFit.cover,
@@ -529,7 +530,7 @@ class _CapturedFrameResultSheetState extends State<_CapturedFrameResultSheet> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.errorContainer,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -569,7 +570,7 @@ class _CapturedFrameResultSheetState extends State<_CapturedFrameResultSheet> {
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(50),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
               ),
               child: Text(isCreateEntry ? '上传到素材库并使用' : '上传到素材库'),
@@ -585,7 +586,7 @@ class _CapturedFrameResultSheetState extends State<_CapturedFrameResultSheet> {
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(50),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
               ),
               label: const Text('保存到相册'),
@@ -598,7 +599,7 @@ class _CapturedFrameResultSheetState extends State<_CapturedFrameResultSheet> {
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(50),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
               ),
               child: Text(isCreateEntry ? '稍后再处理' : '仅保存到本地'),

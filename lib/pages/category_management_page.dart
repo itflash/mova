@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app/spacing.dart';
 
 import '../app/app_scope.dart';
 import '../app/mock_data.dart';
@@ -10,14 +11,20 @@ class CategoryManagementPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: DecoratedBox(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFFF7F8FC), Color(0xFFF1F2F6)],
+            colors: [
+              colorScheme.surface,
+              theme.scaffoldBackgroundColor,
+            ],
           ),
         ),
         child: SafeArea(
@@ -214,7 +221,7 @@ class _CategoryTile extends StatelessWidget {
       button: true,
       label: '分类 $category，点按编辑，长按删除',
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         onTap: () => CategoryManagementPage._openCategoryEditor(
           context,
           title: '修改分类',
@@ -268,7 +275,7 @@ class _CategoryTile extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
                   ),
                   child: Text(
                     '$count',

@@ -1,10 +1,17 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
+
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
+import '../app/spacing.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:video_player/video_player.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 
 import '../app/app_scope.dart';
 import '../app/models.dart';
@@ -411,7 +418,7 @@ class _ZoomableAttachmentImageState extends State<_ZoomableAttachmentImage> {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(AppRadius.card),
       child: AspectRatio(
         aspectRatio: 1,
         child: _ResolvedAttachmentPhotoView(
@@ -568,7 +575,7 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
         height: 280,
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         child: const Center(child: CircularProgressIndicator()),
       );
@@ -581,7 +588,7 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
     }
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(AppRadius.card),
       child: ColoredBox(
         color: Colors.black,
         child: AspectRatio(
@@ -788,7 +795,7 @@ class _VideoRoundButton extends StatelessWidget {
   }
 }
 
-class _ResolvedAttachmentImage extends StatelessWidget {
+class _ResolvedAttachmentImage extends StatefulWidget {
   const _ResolvedAttachmentImage({
     required this.attachment,
     this.width,
@@ -802,29 +809,55 @@ class _ResolvedAttachmentImage extends StatelessWidget {
   final BoxFit fit;
 
   @override
+  State<_ResolvedAttachmentImage> createState() =>
+      _ResolvedAttachmentImageState();
+}
+
+class _ResolvedAttachmentImageState extends State<_ResolvedAttachmentImage> {
+  String? _url;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveUrl();
+  }
+
+  Future<void> _resolveUrl() async {
+    final url = await AppScope.of(context).resolveAttachmentPreviewUrl(
+      widget.attachment,
+    );
+    if (!mounted) return;
+    setState(() {
+      _url = url.trim().isEmpty ? null : url.trim();
+      _loading = false;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final state = AppScope.of(context);
-    return FutureBuilder<String>(
-      future: state.resolveAttachmentPreviewUrl(attachment),
-      builder: (context, snapshot) {
-        final url = snapshot.data?.trim() ?? '';
-        if (url.isEmpty) {
-          return _FallbackThumb(
-            icon: Icons.image_outlined,
-            label: attachment.label,
-          );
-        }
-        return Image.network(
-          url,
-          width: width,
-          height: height,
-          fit: fit,
-          errorBuilder: (_, _, _) => _FallbackThumb(
-            icon: Icons.image_outlined,
-            label: attachment.label,
-          ),
-        );
-      },
+    if (_loading) {
+      return _ThumbPlaceholder(width: widget.width, height: widget.height);
+    }
+    final url = _url;
+    if (url == null) {
+      return _FallbackThumb(
+        icon: Icons.image_outlined,
+        label: widget.attachment.label,
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: url,
+      width: widget.width,
+      height: widget.height,
+      fit: widget.fit,
+      fadeInDuration: const Duration(milliseconds: 150),
+      placeholder: (_, _) =>
+          _ThumbPlaceholder(width: widget.width, height: widget.height),
+      errorWidget: (_, _, _) => _FallbackThumb(
+        icon: Icons.image_outlined,
+        label: widget.attachment.label,
+      ),
     );
   }
 }
@@ -849,136 +882,97 @@ class _ResolvedAttachmentVideoThumb extends StatefulWidget {
 
 class _ResolvedAttachmentVideoThumbState
     extends State<_ResolvedAttachmentVideoThumb> {
-  VideoPlayerController? _controller;
-  bool _ready = false;
+  // 缩略图用 ffmpeg 抽首帧缓存到本地，不再为每个列表项建 VideoPlayerController。
+  // 后者会真正初始化原生解码器，列表里几十个视频项会同时建几十个解码器，
+  // 是素材库滚动卡顿的主因。ffmpeg 抽帧轻量，且结果按 url 哈希缓存到磁盘，
+  // 滚动回来直接读已有图片，不重复抽帧。
+  String? _thumbPath;
+  bool _loading = false;
   bool _initialized = false;
+  String? _resolvedUrl;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_initialized) return;
     _initialized = true;
-    _initialize();
+    _loadThumbnail();
   }
 
-  Future<void> _initialize() async {
+  Future<void> _loadThumbnail() async {
+    setState(() => _loading = true);
     try {
       final url = await AppScope.of(
         context,
       ).resolveAttachmentPreviewUrl(widget.attachment);
       if (!mounted || url.trim().isEmpty) {
+        setState(() => _loading = false);
         return;
       }
-      _controller = _createAttachmentVideoController(url);
-      await _controller!.initialize();
+      _resolvedUrl = url.trim();
+      final cached = await _cachedVideoThumbnail(_resolvedUrl!);
+      if (!mounted) return;
+      setState(() {
+        _thumbPath = cached;
+        _loading = false;
+      });
     } catch (_) {
-      // Keep thumb fallback non-blocking when temporary authorization fails.
+      if (!mounted) return;
+      setState(() => _loading = false);
     }
-    if (!mounted) return;
-    setState(() {
-      _ready = _controller?.value.isInitialized ?? false;
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_ready || _controller == null) {
-      return _FallbackThumb(icon: Icons.movie_outlined, label: widget.label);
+    final path = _thumbPath;
+    if (path != null && path.isNotEmpty) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.file(
+            File(path),
+            fit: BoxFit.cover,
+            width: widget.width,
+            height: widget.height,
+            gaplessPlayback: true,
+          ),
+          const Center(
+            child: Icon(
+              Icons.play_circle_fill_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+        ],
+      );
     }
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        FittedBox(
-          fit: BoxFit.cover,
-          child: SizedBox(
-            width: _controller!.value.size.width,
-            height: _controller!.value.size.height,
-            child: VideoPlayer(_controller!),
-          ),
-        ),
-        const Center(
-          child: Icon(
-            Icons.play_circle_fill_rounded,
-            color: Colors.white,
-            size: 24,
-          ),
-        ),
-      ],
-    );
+    if (_loading) {
+      return _ThumbPlaceholder(width: widget.width, height: widget.height);
+    }
+    return _FallbackThumb(icon: Icons.movie_outlined, label: widget.label);
   }
 }
+class _ThumbPlaceholder extends StatelessWidget {
+  const _ThumbPlaceholder({this.width, this.height});
 
-class _VideoThumb extends StatefulWidget {
-  const _VideoThumb({
-    required this.url,
-    required this.width,
-    required this.height,
-    required this.label,
-  });
-
-  final String url;
-  final double width;
-  final double height;
-  final String label;
-
-  @override
-  State<_VideoThumb> createState() => _VideoThumbState();
-}
-
-class _VideoThumbState extends State<_VideoThumb> {
-  VideoPlayerController? _controller;
-  bool _ready = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = _createAttachmentVideoController(widget.url)
-      ..initialize()
-          .then((_) {
-            if (!mounted) return;
-            setState(() {
-              _ready = true;
-            });
-          })
-          .catchError((_) {});
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
+  final double? width;
+  final double? height;
 
   @override
   Widget build(BuildContext context) {
-    if (!_ready || _controller == null) {
-      return _FallbackThumb(icon: Icons.movie_outlined, label: widget.label);
-    }
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        FittedBox(
-          fit: BoxFit.cover,
-          child: SizedBox(
-            width: _controller!.value.size.width,
-            height: _controller!.value.size.height,
-            child: VideoPlayer(_controller!),
-          ),
+    return Container(
+      width: width,
+      height: height,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      alignment: Alignment.center,
+      child: SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
         ),
-        const Center(
-          child: Icon(
-            Icons.play_circle_fill_rounded,
-            color: Colors.white,
-            size: 24,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -1045,7 +1039,7 @@ class _PreviewFallback extends StatelessWidget {
       height: 280,
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1064,4 +1058,46 @@ class _PreviewFallback extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// 用 ffmpeg 给视频抽一帧首帧作为缩略图，结果按 url 哈希缓存到系统临时目录。
+/// 同一视频重复滚动进入列表时直接读已有 jpg，不重复抽帧，避免卡顿。
+/// 抽帧失败（网络异常、格式不支持等）返回 null，调用方降级到 fallback 占位图。
+Future<String?> _cachedVideoThumbnail(String videoUrl) async {
+  final cacheDir = Directory('${Directory.systemTemp.path}/mova-thumbs');
+  if (!cacheDir.existsSync()) {
+    cacheDir.createSync(recursive: true);
+  }
+  final hash = md5.convert(utf8.encode(videoUrl)).toString();
+  final thumbPath = '${cacheDir.path}/$hash.jpg';
+  final thumbFile = File(thumbPath);
+  if (thumbFile.existsSync() && thumbFile.lengthSync() > 0) {
+    return thumbPath;
+  }
+  // -ss 1 seek 到 1 秒（输入前，快进），-frames:v 1 只取一帧，
+  // scale=480:-2 缩放到宽 480、高度自动对齐偶数，-q:v 4 控制质量/体积。
+  final args = [
+    '-y',
+    '-ss', '1',
+    '-i', videoUrl,
+    '-frames:v', '1',
+    '-vf', 'scale=480:-2',
+    '-q:v', '4',
+    thumbPath,
+  ];
+  final session = await FFmpegKit.executeWithArguments(args).timeout(
+    const Duration(seconds: 8),
+  );
+  final returnCode = await session.getReturnCode();
+  if (ReturnCode.isSuccess(returnCode) &&
+      thumbFile.existsSync() &&
+      thumbFile.lengthSync() > 0) {
+    return thumbPath;
+  }
+  // 抽帧失败，清理可能产生的空文件。
+  if (thumbFile.existsSync()) {
+    thumbFile.deleteSync();
+  }
+  return null;
 }

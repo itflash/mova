@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app/spacing.dart';
 
 import '../app/app_state.dart';
 import '../app/models.dart';
@@ -272,7 +273,7 @@ class _EmptySourceHint extends StatelessWidget {
             height: 34,
             decoration: BoxDecoration(
               color: colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(11),
+              borderRadius: BorderRadius.circular(AppRadius.control),
             ),
             child: Icon(
               Icons.video_library_outlined,
