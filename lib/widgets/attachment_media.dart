@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import '../app/spacing.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:video_player/video_player.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../app/app_scope.dart';
 import '../app/models.dart';
@@ -789,7 +791,7 @@ class _VideoRoundButton extends StatelessWidget {
   }
 }
 
-class _ResolvedAttachmentImage extends StatelessWidget {
+class _ResolvedAttachmentImage extends StatefulWidget {
   const _ResolvedAttachmentImage({
     required this.attachment,
     this.width,
@@ -803,29 +805,55 @@ class _ResolvedAttachmentImage extends StatelessWidget {
   final BoxFit fit;
 
   @override
+  State<_ResolvedAttachmentImage> createState() =>
+      _ResolvedAttachmentImageState();
+}
+
+class _ResolvedAttachmentImageState extends State<_ResolvedAttachmentImage> {
+  String? _url;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveUrl();
+  }
+
+  Future<void> _resolveUrl() async {
+    final url = await AppScope.of(context).resolveAttachmentPreviewUrl(
+      widget.attachment,
+    );
+    if (!mounted) return;
+    setState(() {
+      _url = url.trim().isEmpty ? null : url.trim();
+      _loading = false;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final state = AppScope.of(context);
-    return FutureBuilder<String>(
-      future: state.resolveAttachmentPreviewUrl(attachment),
-      builder: (context, snapshot) {
-        final url = snapshot.data?.trim() ?? '';
-        if (url.isEmpty) {
-          return _FallbackThumb(
-            icon: Icons.image_outlined,
-            label: attachment.label,
-          );
-        }
-        return Image.network(
-          url,
-          width: width,
-          height: height,
-          fit: fit,
-          errorBuilder: (_, _, _) => _FallbackThumb(
-            icon: Icons.image_outlined,
-            label: attachment.label,
-          ),
-        );
-      },
+    if (_loading) {
+      return _ThumbPlaceholder(width: widget.width, height: widget.height);
+    }
+    final url = _url;
+    if (url == null) {
+      return _FallbackThumb(
+        icon: Icons.image_outlined,
+        label: widget.attachment.label,
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: url,
+      width: widget.width,
+      height: widget.height,
+      fit: widget.fit,
+      fadeInDuration: const Duration(milliseconds: 150),
+      placeholder: (_, _) =>
+          _ThumbPlaceholder(width: widget.width, height: widget.height),
+      errorWidget: (_, _, _) => _FallbackThumb(
+        icon: Icons.image_outlined,
+        label: widget.attachment.label,
+      ),
     );
   }
 }
@@ -850,136 +878,103 @@ class _ResolvedAttachmentVideoThumb extends StatefulWidget {
 
 class _ResolvedAttachmentVideoThumbState
     extends State<_ResolvedAttachmentVideoThumb> {
-  VideoPlayerController? _controller;
-  bool _ready = false;
+  // 缩略图用 video_thumbnail 抽首帧，不再为每个列表项建 VideoPlayerController。
+  // 后者会真正初始化原生解码器，列表里几十个视频项会同时建几十个解码器，
+  // 是素材库滚动卡顿的主因。
+  String? _thumbPath;
+  bool _loading = false;
   bool _initialized = false;
+  String? _resolvedUrl;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_initialized) return;
     _initialized = true;
-    _initialize();
+    _loadThumbnail();
   }
 
-  Future<void> _initialize() async {
+  Future<void> _loadThumbnail() async {
+    setState(() => _loading = true);
     try {
       final url = await AppScope.of(
         context,
       ).resolveAttachmentPreviewUrl(widget.attachment);
       if (!mounted || url.trim().isEmpty) {
+        setState(() => _loading = false);
         return;
       }
-      _controller = _createAttachmentVideoController(url);
-      await _controller!.initialize();
+     _resolvedUrl = url.trim();
+      // 加超时保护：测试环境或平台 channel 异常时不会永久挂起，直接降级
+      // 到 fallback 占位图。真实抽帧通常 <1s 完成。
+      final result = await VideoThumbnail.thumbnailFile(
+        video: _resolvedUrl!,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: 480,
+        quality: 70,
+      ).timeout(const Duration(seconds: 5));
+      if (!mounted) return;
+      setState(() {
+        _thumbPath = result;
+        _loading = false;
+      });
     } catch (_) {
-      // Keep thumb fallback non-blocking when temporary authorization fails.
+      if (!mounted) return;
+      setState(() => _loading = false);
     }
-    if (!mounted) return;
-    setState(() {
-      _ready = _controller?.value.isInitialized ?? false;
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_ready || _controller == null) {
-      return _FallbackThumb(icon: Icons.movie_outlined, label: widget.label);
+    final path = _thumbPath;
+    if (path != null && path.isNotEmpty) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.file(
+            File(path),
+            fit: BoxFit.cover,
+            width: widget.width,
+            height: widget.height,
+            gaplessPlayback: true,
+          ),
+          const Center(
+            child: Icon(
+              Icons.play_circle_fill_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+        ],
+      );
     }
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        FittedBox(
-          fit: BoxFit.cover,
-          child: SizedBox(
-            width: _controller!.value.size.width,
-            height: _controller!.value.size.height,
-            child: VideoPlayer(_controller!),
-          ),
-        ),
-        const Center(
-          child: Icon(
-            Icons.play_circle_fill_rounded,
-            color: Colors.white,
-            size: 24,
-          ),
-        ),
-      ],
-    );
+    if (_loading) {
+      return _ThumbPlaceholder(width: widget.width, height: widget.height);
+    }
+    return _FallbackThumb(icon: Icons.movie_outlined, label: widget.label);
   }
 }
+class _ThumbPlaceholder extends StatelessWidget {
+  const _ThumbPlaceholder({this.width, this.height});
 
-class _VideoThumb extends StatefulWidget {
-  const _VideoThumb({
-    required this.url,
-    required this.width,
-    required this.height,
-    required this.label,
-  });
-
-  final String url;
-  final double width;
-  final double height;
-  final String label;
-
-  @override
-  State<_VideoThumb> createState() => _VideoThumbState();
-}
-
-class _VideoThumbState extends State<_VideoThumb> {
-  VideoPlayerController? _controller;
-  bool _ready = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = _createAttachmentVideoController(widget.url)
-      ..initialize()
-          .then((_) {
-            if (!mounted) return;
-            setState(() {
-              _ready = true;
-            });
-          })
-          .catchError((_) {});
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
+  final double? width;
+  final double? height;
 
   @override
   Widget build(BuildContext context) {
-    if (!_ready || _controller == null) {
-      return _FallbackThumb(icon: Icons.movie_outlined, label: widget.label);
-    }
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        FittedBox(
-          fit: BoxFit.cover,
-          child: SizedBox(
-            width: _controller!.value.size.width,
-            height: _controller!.value.size.height,
-            child: VideoPlayer(_controller!),
-          ),
+    return Container(
+      width: width,
+      height: height,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      alignment: Alignment.center,
+      child: SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
         ),
-        const Center(
-          child: Icon(
-            Icons.play_circle_fill_rounded,
-            color: Colors.white,
-            size: 24,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
