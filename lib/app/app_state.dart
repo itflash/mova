@@ -533,6 +533,7 @@ class AppState extends ChangeNotifier {
         _restoreFromJson(jsonDecode(raw));
         _syncSelectedAttachmentsFromPrompt();
         _backfillAttachmentSourceTaskId();
+        _backfillAttachmentStorageDomain();
       }
     } catch (error) {
       configStatusMessage = '本地配置读取失败：${_cleanError(error)}';
@@ -583,6 +584,31 @@ class AppState extends ChangeNotifier {
       }
     }
     return index;
+  }
+
+  /// 历史素材落库时未记录 storageDomain。加载持久化数据后，从素材的 url
+  /// （形如 https://domain.example.com/key）反解出 scheme://host[:port] 回填，
+  /// 使切换空间后旧素材仍能用各自域名访问。已带 storageDomain 的素材不变；
+  /// url 为空或无法解析的跳过。回填结果随下一次持久化落盘。
+  void _backfillAttachmentStorageDomain() {
+    var changed = false;
+    for (var i = 0; i < library.length; i++) {
+      final attachment = library[i];
+      if (attachment.storageDomain != null &&
+          attachment.storageDomain!.trim().isNotEmpty) {
+        continue;
+      }
+      final rawUrl = attachment.url.trim();
+      if (rawUrl.isEmpty) continue;
+      final uri = Uri.tryParse(rawUrl);
+      if (uri == null || !uri.hasScheme || uri.host.isEmpty) continue;
+      // 提取 scheme://host[:port] 作为域名，去掉 path/query。
+      final port = uri.hasPort ? ':${uri.port}' : '';
+      final domain = '${uri.scheme}://${uri.host}$port';
+      library[i] = attachment.copyWith(storageDomain: domain);
+      changed = true;
+    }
+    if (changed) notifyListeners();
   }
 
   void onAppLifecycleChanged(AppLifecycleState state) {
