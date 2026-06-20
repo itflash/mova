@@ -13,6 +13,7 @@ class StorageUploadResult {
     this.storageBucket,
     this.storageEndpoint,
     this.storageRegion,
+    this.storageDomain,
     this.fileSizeBytes,
   });
 
@@ -26,6 +27,7 @@ class StorageUploadResult {
   final String? storageBucket;
   final String? storageEndpoint;
   final String? storageRegion;
+  final String? storageDomain;
   final int? fileSizeBytes;
 }
 

@@ -308,6 +308,7 @@ class Attachment {
     this.storageBucket,
     this.storageEndpoint,
     this.storageRegion,
+    this.storageDomain,
     this.fileSizeBytes,
     this.sourceTaskId,
   });
@@ -332,6 +333,7 @@ class Attachment {
   final String? storageBucket;
   final String? storageEndpoint;
   final String? storageRegion;
+  final String? storageDomain;
   final int? fileSizeBytes;
 
   /// 该素材是哪个任务产出的（图片任务一次可能产出多张）。
@@ -358,6 +360,7 @@ class Attachment {
     String? storageBucket,
     String? storageEndpoint,
     String? storageRegion,
+    String? storageDomain,
     int? fileSizeBytes,
     String? sourceTaskId,
     bool clearLocalResourceUri = false,
@@ -397,6 +400,7 @@ class Attachment {
       storageBucket: storageBucket ?? this.storageBucket,
       storageEndpoint: storageEndpoint ?? this.storageEndpoint,
       storageRegion: storageRegion ?? this.storageRegion,
+      storageDomain: storageDomain ?? this.storageDomain,
       fileSizeBytes: clearFileSizeBytes
           ? null
           : (fileSizeBytes ?? this.fileSizeBytes),

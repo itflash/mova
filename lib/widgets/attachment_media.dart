@@ -824,14 +824,31 @@ class _ResolvedAttachmentImageState extends State<_ResolvedAttachmentImage> {
   }
 
   Future<void> _resolveUrl() async {
-    final url = await AppScope.of(context).resolveAttachmentPreviewUrl(
-      widget.attachment,
-    );
+    final url = await AppScope.of(
+      context,
+    ).resolveAttachmentPreviewUrl(widget.attachment);
     if (!mounted) return;
     setState(() {
       _url = url.trim().isEmpty ? null : url.trim();
       _loading = false;
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant _ResolvedAttachmentImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final prev = oldWidget.attachment;
+    final next = widget.attachment;
+    if (prev.id != next.id ||
+        prev.objectKey != next.objectKey ||
+        prev.url != next.url ||
+        prev.storageProvider != next.storageProvider) {
+      // 列表项复用时 attachment 已变（例如刚上传新素材后列表重建），
+      // 需重新解析预览 URL，否则会显示上一项的缓存图。
+      _url = null;
+      _loading = true;
+      _resolveUrl();
+    }
   }
 
   @override
@@ -899,6 +916,24 @@ class _ResolvedAttachmentVideoThumbState
     _loadThumbnail();
   }
 
+  @override
+  void didUpdateWidget(covariant _ResolvedAttachmentVideoThumb oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_attachmentChanged(oldWidget.attachment, widget.attachment)) {
+      // 列表项复用且 attachment 变了：重置缩略图状态并按新素材重新抽帧。
+      _thumbPath = null;
+      _resolvedUrl = null;
+      _loadThumbnail();
+    }
+  }
+
+  bool _attachmentChanged(Attachment a, Attachment b) {
+    return a.id != b.id ||
+        a.objectKey != b.objectKey ||
+        a.url != b.url ||
+        a.storageProvider != b.storageProvider;
+  }
+
   Future<void> _loadThumbnail() async {
     setState(() => _loading = true);
     try {
@@ -952,6 +987,7 @@ class _ResolvedAttachmentVideoThumbState
     return _FallbackThumb(icon: Icons.movie_outlined, label: widget.label);
   }
 }
+
 class _ThumbPlaceholder extends StatelessWidget {
   const _ThumbPlaceholder({this.width, this.height});
 
@@ -970,7 +1006,9 @@ class _ThumbPlaceholder extends StatelessWidget {
         height: 18,
         child: CircularProgressIndicator(
           strokeWidth: 2,
-          color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+          color: Theme.of(
+            context,
+          ).colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
         ),
       ),
     );
@@ -1060,7 +1098,6 @@ class _PreviewFallback extends StatelessWidget {
   }
 }
 
-
 /// 用 ffmpeg 给视频抽一帧首帧作为缩略图，结果按 url 哈希缓存到系统临时目录。
 /// 同一视频重复滚动进入列表时直接读已有 jpg，不重复抽帧，避免卡顿。
 /// 抽帧失败（网络异常、格式不支持等）返回 null，调用方降级到 fallback 占位图。
@@ -1079,16 +1116,21 @@ Future<String?> _cachedVideoThumbnail(String videoUrl) async {
   // scale=480:-2 缩放到宽 480、高度自动对齐偶数，-q:v 4 控制质量/体积。
   final args = [
     '-y',
-    '-ss', '1',
-    '-i', videoUrl,
-    '-frames:v', '1',
-    '-vf', 'scale=480:-2',
-    '-q:v', '4',
+    '-ss',
+    '1',
+    '-i',
+    videoUrl,
+    '-frames:v',
+    '1',
+    '-vf',
+    'scale=480:-2',
+    '-q:v',
+    '4',
     thumbPath,
   ];
-  final session = await FFmpegKit.executeWithArguments(args).timeout(
-    const Duration(seconds: 8),
-  );
+  final session = await FFmpegKit.executeWithArguments(
+    args,
+  ).timeout(const Duration(seconds: 8));
   final returnCode = await session.getReturnCode();
   if (ReturnCode.isSuccess(returnCode) &&
       thumbFile.existsSync() &&

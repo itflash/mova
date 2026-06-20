@@ -96,6 +96,7 @@ class AppState extends ChangeNotifier {
   bool isFetchingDomains = false;
   final List<String> bucketOptions = [];
   final List<String> domainOptions = [];
+  bool? qiniuBucketPrivate;
   final Set<String> expandedPollLogTaskIds = {};
   final Map<ModeId, ToolResolution> toolResolutions = {};
   String imagePrompt = '';
@@ -529,10 +530,11 @@ class AppState extends ChangeNotifier {
     try {
       final raw = await _storage.readState();
       if (raw != null && raw.trim().isNotEmpty) {
-     _restoreFromJson(jsonDecode(raw));
-     _syncSelectedAttachmentsFromPrompt();
-     _backfillAttachmentSourceTaskId();
-   }
+        _restoreFromJson(jsonDecode(raw));
+        _syncSelectedAttachmentsFromPrompt();
+        _backfillAttachmentSourceTaskId();
+        _backfillAttachmentStorageDomain();
+      }
     } catch (error) {
       configStatusMessage = '本地配置读取失败：${_cleanError(error)}';
     } finally {
@@ -542,47 +544,72 @@ class AppState extends ChangeNotifier {
     }
   }
 
- /// 历史素材在落库时尚无 sourceTaskId 字段。加载持久化数据后，用图片任务的
- /// imageResults[].attachmentId 反查 taskId，给 sourceTaskId 为空但确实产自
- /// 某任务的素材补上归属，使其能在素材库里按任务折叠分组。已带 sourceTaskId
- /// 的素材保持不变；回填结果会在下一次 savePersistedState 时随正常持久化落盘。
- void _backfillAttachmentSourceTaskId() {
-   final index = buildAttachmentTaskIdIndex(tasks);
-   if (index.isEmpty) return;
-   var changed = false;
-   for (var i = 0; i < library.length; i++) {
-     final attachment = library[i];
-     if (attachment.sourceTaskId != null &&
-         attachment.sourceTaskId!.isNotEmpty) {
-       continue;
-     }
-     final taskId = index[attachment.id];
-     if (taskId == null) continue;
-     library[i] = attachment.copyWith(sourceTaskId: taskId);
-     changed = true;
-   }
-   if (changed) notifyListeners();
- }
+  /// 历史素材在落库时尚无 sourceTaskId 字段。加载持久化数据后，用图片任务的
+  /// imageResults[].attachmentId 反查 taskId，给 sourceTaskId 为空但确实产自
+  /// 某任务的素材补上归属，使其能在素材库里按任务折叠分组。已带 sourceTaskId
+  /// 的素材保持不变；回填结果会在下一次 savePersistedState 时随正常持久化落盘。
+  void _backfillAttachmentSourceTaskId() {
+    final index = buildAttachmentTaskIdIndex(tasks);
+    if (index.isEmpty) return;
+    var changed = false;
+    for (var i = 0; i < library.length; i++) {
+      final attachment = library[i];
+      if (attachment.sourceTaskId != null &&
+          attachment.sourceTaskId!.isNotEmpty) {
+        continue;
+      }
+      final taskId = index[attachment.id];
+      if (taskId == null) continue;
+      library[i] = attachment.copyWith(sourceTaskId: taskId);
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
 
- /// 由图片任务的 imageResults[].attachmentId 反查 taskId，建立
- /// attachmentId -> taskId 索引。用于给历史素材回填 sourceTaskId，
- /// 使其能在素材库里按任务折叠分组。
- static Map<String, String> buildAttachmentTaskIdIndex(
-   Iterable<TaskRecord> tasks,
- ) {
-   final index = <String, String>{};
-   for (final task in tasks) {
-     if (task.kind != TaskKind.image) continue;
-     for (final item in task.imageResults) {
-       final attachmentId = item.attachmentId;
-       if (attachmentId == null || attachmentId.isEmpty) continue;
-       if (!index.containsKey(attachmentId)) {
-         index[attachmentId] = task.id;
-       }
-     }
-   }
-   return index;
- }
+  /// 由图片任务的 imageResults[].attachmentId 反查 taskId，建立
+  /// attachmentId -> taskId 索引。用于给历史素材回填 sourceTaskId，
+  /// 使其能在素材库里按任务折叠分组。
+  static Map<String, String> buildAttachmentTaskIdIndex(
+    Iterable<TaskRecord> tasks,
+  ) {
+    final index = <String, String>{};
+    for (final task in tasks) {
+      if (task.kind != TaskKind.image) continue;
+      for (final item in task.imageResults) {
+        final attachmentId = item.attachmentId;
+        if (attachmentId == null || attachmentId.isEmpty) continue;
+        if (!index.containsKey(attachmentId)) {
+          index[attachmentId] = task.id;
+        }
+      }
+    }
+    return index;
+  }
+
+  /// 历史素材落库时未记录 storageDomain。加载持久化数据后，从素材的 url
+  /// （形如 https://domain.example.com/key）反解出 scheme://host[:port] 回填，
+  /// 使切换空间后旧素材仍能用各自域名访问。已带 storageDomain 的素材不变；
+  /// url 为空或无法解析的跳过。回填结果随下一次持久化落盘。
+  void _backfillAttachmentStorageDomain() {
+    var changed = false;
+    for (var i = 0; i < library.length; i++) {
+      final attachment = library[i];
+      if (attachment.storageDomain != null &&
+          attachment.storageDomain!.trim().isNotEmpty) {
+        continue;
+      }
+      final rawUrl = attachment.url.trim();
+      if (rawUrl.isEmpty) continue;
+      final uri = Uri.tryParse(rawUrl);
+      if (uri == null || !uri.hasScheme || uri.host.isEmpty) continue;
+      // 提取 scheme://host[:port] 作为域名，去掉 path/query。
+      final port = uri.hasPort ? ':${uri.port}' : '';
+      final domain = '${uri.scheme}://${uri.host}$port';
+      library[i] = attachment.copyWith(storageDomain: domain);
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
 
   void onAppLifecycleChanged(AppLifecycleState state) {
     final foreground = switch (state) {
@@ -936,6 +963,9 @@ class AppState extends ChangeNotifier {
     if (previousBucket != settings.qiniuBucket &&
         settings.storageProvider == StorageProvider.qiniu &&
         settings.qiniuBucket.isNotEmpty) {
+      // 切换 bucket 后旧的私有属性失效，清空签名缓存并重置，由 fetchDomainList 重新查询。
+      qiniuBucketPrivate = null;
+      _signedUrlCache.removeWhere((key, _) => key.startsWith('qiniu:'));
       fetchDomainList();
     }
   }
@@ -2105,9 +2135,10 @@ class AppState extends ChangeNotifier {
     );
     notifyListeners();
 
+    final client = HttpClient();
     try {
       final uri = Uri.parse(videoUrl);
-      final request = await HttpClient().getUrl(uri);
+      final request = await client.getUrl(uri);
       final response = await request.close();
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw HttpException('下载失败（HTTP ${response.statusCode}）', uri: uri);
@@ -2119,23 +2150,31 @@ class AppState extends ChangeNotifier {
       final sink = tempFile.openWrite();
       final total = response.contentLength;
       var downloaded = 0;
-      await for (final chunk in response) {
-        sink.add(chunk);
-        downloaded += chunk.length;
-        final latestIndex = tasks.indexWhere((item) => item.id == taskId);
-        if (latestIndex != -1 && total > 0) {
-          final nextProgress = ((downloaded / total) * 100).round().clamp(
-            0,
-            100,
-          );
-          tasks[latestIndex] = tasks[latestIndex].copyWith(
-            downloadProgress: nextProgress,
-            updatedAt: DateTime.now(),
-          );
-          notifyListeners();
+      var lastNotifiedProgress = -1;
+      try {
+        await for (final chunk in response) {
+          sink.add(chunk);
+          downloaded += chunk.length;
+          final latestIndex = tasks.indexWhere((item) => item.id == taskId);
+          if (latestIndex != -1 && total > 0) {
+            final nextProgress = ((downloaded / total) * 100).round().clamp(
+              0,
+              100,
+            );
+            // 节流：百分比未变就不 notify，避免大文件下载时每个 chunk 都触发全树重建。
+            if (nextProgress != lastNotifiedProgress) {
+              lastNotifiedProgress = nextProgress;
+              tasks[latestIndex] = tasks[latestIndex].copyWith(
+                downloadProgress: nextProgress,
+                updatedAt: DateTime.now(),
+              );
+              notifyListeners();
+            }
+          }
         }
+      } finally {
+        await sink.close();
       }
-      await sink.close();
 
       final saved = await _mediaChannel.invokeMapMethod<String, Object?>(
         'saveVideoToGallery',
@@ -2170,6 +2209,8 @@ class AppState extends ChangeNotifier {
       );
       notifyListeners();
       return false;
+    } finally {
+      client.close(force: false);
     }
   }
 
@@ -2377,18 +2418,26 @@ class AppState extends ChangeNotifier {
 
   Future<File> downloadRemoteImageToTemp(String url, String fileName) async {
     final uri = Uri.parse(url);
-    final request = await HttpClient().getUrl(uri);
-    final response = await request.close();
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw HttpException('下载失败（HTTP ${response.statusCode}）', uri: uri);
+    final client = HttpClient();
+    try {
+      final request = await client.getUrl(uri);
+      final response = await request.close();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException('下载失败（HTTP \${response.statusCode}）', uri: uri);
+      }
+      final tempFile = File('${Directory.systemTemp.path}/$fileName');
+      final sink = tempFile.openWrite();
+      try {
+        await for (final chunk in response) {
+          sink.add(chunk);
+        }
+      } finally {
+        await sink.close();
+      }
+      return tempFile;
+    } finally {
+      client.close(force: false);
     }
-    final tempFile = File('${Directory.systemTemp.path}/$fileName');
-    final sink = tempFile.openWrite();
-    await for (final chunk in response) {
-      sink.add(chunk);
-    }
-    await sink.close();
-    return tempFile;
   }
 
   Future<String?> saveCompositionExportToGallery() async {
@@ -2674,24 +2723,32 @@ class AppState extends ChangeNotifier {
     void Function(int progress)? onProgress,
   }) async {
     final uri = Uri.parse(url);
-    final request = await HttpClient().getUrl(uri);
-    final response = await request.close();
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw HttpException('下载失败（HTTP ${response.statusCode}）', uri: uri);
-    }
-    final tempFile = File('${Directory.systemTemp.path}/$fileName');
-    final sink = tempFile.openWrite();
-    final total = response.contentLength;
-    var downloaded = 0;
-    await for (final chunk in response) {
-      sink.add(chunk);
-      downloaded += chunk.length;
-      if (total > 0 && onProgress != null) {
-        onProgress(((downloaded / total) * 100).round().clamp(0, 100));
+    final client = HttpClient();
+    try {
+      final request = await client.getUrl(uri);
+      final response = await request.close();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException('下载失败（HTTP \${response.statusCode}）', uri: uri);
       }
+      final tempFile = File('${Directory.systemTemp.path}/$fileName');
+      final sink = tempFile.openWrite();
+      try {
+        final total = response.contentLength;
+        var downloaded = 0;
+        await for (final chunk in response) {
+          sink.add(chunk);
+          downloaded += chunk.length;
+          if (total > 0 && onProgress != null) {
+            onProgress(((downloaded / total) * 100).round().clamp(0, 100));
+          }
+        }
+      } finally {
+        await sink.close();
+      }
+      return tempFile;
+    } finally {
+      client.close(force: false);
     }
-    await sink.close();
-    return tempFile;
   }
 
   Future<Map<String, Object?>?> saveVideoToLocalLibrary(
@@ -2790,6 +2847,7 @@ class AppState extends ChangeNotifier {
         storageBucket: result.storageBucket,
         storageEndpoint: result.storageEndpoint,
         storageRegion: result.storageRegion,
+        storageDomain: result.storageDomain,
         fileSizeBytes: result.fileSizeBytes,
         sourceTaskId: sourceTaskId,
       ),
@@ -3129,6 +3187,8 @@ class AppState extends ChangeNotifier {
           qiniuDomain: items.isEmpty ? '' : items.first,
         );
       }
+      // 顺便查询当前 bucket 是否为私有空间，预览/下载链接需要据此签名。
+      await _refreshQiniuBucketPrivate();
       configStatusMessage = items.isEmpty ? '当前 Bucket 还没有绑定可用域名。' : '域名列表已刷新。';
       isFetchingDomains = false;
       notifyListeners();
@@ -3138,6 +3198,18 @@ class AppState extends ChangeNotifier {
       isFetchingDomains = false;
       notifyListeners();
       return false;
+    }
+  }
+
+  /// 查询当前 bucket 的私有属性并缓存到 qiniuBucketPrivate。
+  /// 查询失败不阻断流程，置 null 表示未知，预览时按公开空间处理。
+  Future<void> _refreshQiniuBucketPrivate() async {
+    try {
+      qiniuBucketPrivate = await _qiniuUploadService.fetchBucketPrivate(
+        settings,
+      );
+    } on Exception {
+      qiniuBucketPrivate = null;
     }
   }
 
@@ -3159,6 +3231,7 @@ class AppState extends ChangeNotifier {
       domainOptions
         ..clear()
         ..addAll(items);
+      await _refreshQiniuBucketPrivate();
       configStatusMessage = items.isEmpty
           ? '七牛配置测试通过，但当前 Bucket 没有返回域名。'
           : '七牛配置测试通过，域名列表可正常访问。';
@@ -3734,13 +3807,43 @@ class AppState extends ChangeNotifier {
   }) async {
     if (attachment.storageProvider == StorageProvider.qiniu) {
       final objectKey = attachment.objectKey?.trim();
-      final configuredDomain = settings.qiniuDomain.trim();
-      if (objectKey != null &&
-          objectKey.isNotEmpty &&
-          configuredDomain.isNotEmpty) {
-        return '${normalizePublicUrlBase(configuredDomain)}/${encodeObjectKeyForUrl(objectKey)}';
+      // 域名优先取素材上传时记录的 storageDomain，回退到当前全局配置。
+      // 这样切换到其他空间后，旧素材仍用各自归属域名访问，不会全部失效。
+      final resolvedDomain =
+          (attachment.storageDomain?.trim().isNotEmpty == true
+          ? attachment.storageDomain!.trim()
+          : settings.qiniuDomain.trim());
+      if (objectKey == null || objectKey.isEmpty || resolvedDomain.isEmpty) {
+        return attachment.url;
       }
-      return attachment.url;
+      final normalizedDomain = normalizePublicUrlBase(resolvedDomain);
+      // 公开空间直接拼域名 + key；私有空间需要带签名 token 才能访问。
+      if (qiniuBucketPrivate != true) {
+        return '$normalizedDomain/${encodeObjectKeyForUrl(objectKey)}';
+      }
+      final cacheKey = 'qiniu:${purpose.name}:${attachment.id}:$objectKey';
+      final now = DateTime.now();
+      final cached = _signedUrlCache[cacheKey];
+      if (cached != null &&
+          cached.expiresAt.isAfter(now.add(const Duration(minutes: 1)))) {
+        return cached.url;
+      }
+      final expiresIn = switch (purpose) {
+        _AttachmentAccessPurpose.preview => const Duration(hours: 1),
+        _AttachmentAccessPurpose.share => const Duration(hours: 1),
+        _AttachmentAccessPurpose.seedance => const Duration(hours: 24),
+      };
+      final url = _qiniuUploadService.createPrivateDownloadUrl(
+        settings: settings,
+        objectKey: objectKey,
+        domain: normalizedDomain,
+        expiresIn: expiresIn,
+      );
+      _signedUrlCache[cacheKey] = _SignedUrlCacheEntry(
+        url: url,
+        expiresAt: now.add(expiresIn),
+      );
+      return url;
     }
     if (attachment.storageProvider != StorageProvider.bitifulS4) {
       return attachment.url;
@@ -3800,6 +3903,7 @@ class AppState extends ChangeNotifier {
     'storageBucket': value.storageBucket,
     'storageEndpoint': value.storageEndpoint,
     'storageRegion': value.storageRegion,
+    'storageDomain': value.storageDomain,
     'fileSizeBytes': value.fileSizeBytes,
     'sourceTaskId': value.sourceTaskId,
   };
@@ -3868,6 +3972,7 @@ class AppState extends ChangeNotifier {
       storageBucket: _nullableStringValue(map['storageBucket']),
       storageEndpoint: _nullableStringValue(map['storageEndpoint']),
       storageRegion: _nullableStringValue(map['storageRegion']),
+      storageDomain: _nullableStringValue(map['storageDomain']),
       fileSizeBytes: map['fileSizeBytes'] is num
           ? (map['fileSizeBytes'] as num).round()
           : null,
