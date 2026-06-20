@@ -87,6 +87,42 @@ class QiniuUploadService {
     );
   }
 
+  /// 查询 bucket 是否为私有空间。
+  /// 七牛管理 API：GET `/bucket/<bucket>/private`，返回 {"private": 0|1}。
+  Future<bool> fetchBucketPrivate(SettingsState settings) async {
+    final config = _QiniuConfig.fromSettings(settings);
+    final response = await _requestManagementJson(
+      config: config,
+      method: 'GET',
+      pathWithQuery: '/bucket/${Uri.encodeComponent(config.bucket)}/private',
+    );
+    final value = response is Map ? response['private'] : null;
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) return value.trim() == '1' || value.trim() == 'true';
+    return false;
+  }
+
+  /// 为私有空间生成带签名的下载 URL。
+  /// 签名规则：downloadUrl = domain + path + '?e=' + deadline + '&token=' + ak + ':' + sign
+  /// 其中 sign = urlSafeBase64(HMAC-SHA1(secret, path + '?e=' + deadline))，
+  /// path 是 '/'+objectKey，deadline 是秒级 Unix 时间戳。
+  String createPrivateDownloadUrl({
+    required SettingsState settings,
+    required String objectKey,
+    required Duration expiresIn,
+  }) {
+    final config = _QiniuConfig.fromSettings(settings);
+    final domain = normalizePublicUrlBase(config.domain);
+    final deadline =
+        DateTime.now().millisecondsSinceEpoch ~/ 1000 + expiresIn.inSeconds;
+    final path = '/${encodeObjectKeyForUrl(objectKey)}';
+    final signingStr = '$path?e=$deadline';
+    final signature = _hmacSha1Base64Url(config.secretKey, signingStr);
+    final token = '${config.accessKey}:$signature';
+    return '$domain$path?e=$deadline&token=$token';
+  }
+
   Future<void> deleteObject({
     required SettingsState settings,
     required String bucket,

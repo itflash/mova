@@ -96,6 +96,7 @@ class AppState extends ChangeNotifier {
   bool isFetchingDomains = false;
   final List<String> bucketOptions = [];
   final List<String> domainOptions = [];
+  bool? qiniuBucketPrivate;
   final Set<String> expandedPollLogTaskIds = {};
   final Map<ModeId, ToolResolution> toolResolutions = {};
   String imagePrompt = '';
@@ -936,6 +937,9 @@ class AppState extends ChangeNotifier {
     if (previousBucket != settings.qiniuBucket &&
         settings.storageProvider == StorageProvider.qiniu &&
         settings.qiniuBucket.isNotEmpty) {
+      // 切换 bucket 后旧的私有属性失效，清空签名缓存并重置，由 fetchDomainList 重新查询。
+      qiniuBucketPrivate = null;
+      _signedUrlCache.removeWhere((key, _) => key.startsWith('qiniu:'));
       fetchDomainList();
     }
   }
@@ -3156,6 +3160,8 @@ class AppState extends ChangeNotifier {
           qiniuDomain: items.isEmpty ? '' : items.first,
         );
       }
+      // 顺便查询当前 bucket 是否为私有空间，预览/下载链接需要据此签名。
+      await _refreshQiniuBucketPrivate();
       configStatusMessage = items.isEmpty ? '当前 Bucket 还没有绑定可用域名。' : '域名列表已刷新。';
       isFetchingDomains = false;
       notifyListeners();
@@ -3165,6 +3171,18 @@ class AppState extends ChangeNotifier {
       isFetchingDomains = false;
       notifyListeners();
       return false;
+    }
+  }
+
+  /// 查询当前 bucket 的私有属性并缓存到 qiniuBucketPrivate。
+  /// 查询失败不阻断流程，置 null 表示未知，预览时按公开空间处理。
+  Future<void> _refreshQiniuBucketPrivate() async {
+    try {
+      qiniuBucketPrivate = await _qiniuUploadService.fetchBucketPrivate(
+        settings,
+      );
+    } on Exception {
+      qiniuBucketPrivate = null;
     }
   }
 
@@ -3186,6 +3204,7 @@ class AppState extends ChangeNotifier {
       domainOptions
         ..clear()
         ..addAll(items);
+      await _refreshQiniuBucketPrivate();
       configStatusMessage = items.isEmpty
           ? '七牛配置测试通过，但当前 Bucket 没有返回域名。'
           : '七牛配置测试通过，域名列表可正常访问。';
@@ -3762,12 +3781,35 @@ class AppState extends ChangeNotifier {
     if (attachment.storageProvider == StorageProvider.qiniu) {
       final objectKey = attachment.objectKey?.trim();
       final configuredDomain = settings.qiniuDomain.trim();
-      if (objectKey != null &&
-          objectKey.isNotEmpty &&
-          configuredDomain.isNotEmpty) {
+      if (objectKey == null || objectKey.isEmpty || configuredDomain.isEmpty) {
+        return attachment.url;
+      }
+      // 公开空间直接拼域名 + key；私有空间需要带签名 token 才能访问。
+      if (qiniuBucketPrivate != true) {
         return '${normalizePublicUrlBase(configuredDomain)}/${encodeObjectKeyForUrl(objectKey)}';
       }
-      return attachment.url;
+      final cacheKey = 'qiniu:${purpose.name}:${attachment.id}:$objectKey';
+      final now = DateTime.now();
+      final cached = _signedUrlCache[cacheKey];
+      if (cached != null &&
+          cached.expiresAt.isAfter(now.add(const Duration(minutes: 1)))) {
+        return cached.url;
+      }
+      final expiresIn = switch (purpose) {
+        _AttachmentAccessPurpose.preview => const Duration(hours: 1),
+        _AttachmentAccessPurpose.share => const Duration(hours: 1),
+        _AttachmentAccessPurpose.seedance => const Duration(hours: 24),
+      };
+      final url = _qiniuUploadService.createPrivateDownloadUrl(
+        settings: settings,
+        objectKey: objectKey,
+        expiresIn: expiresIn,
+      );
+      _signedUrlCache[cacheKey] = _SignedUrlCacheEntry(
+        url: url,
+        expiresAt: now.add(expiresIn),
+      );
+      return url;
     }
     if (attachment.storageProvider != StorageProvider.bitifulS4) {
       return attachment.url;
