@@ -8,7 +8,7 @@
 - Current app/package id:
   - Android: `com.jbrains.mova`
   - iOS bundle id: `com.jbrains.mova`
-- App version in `pubspec.yaml`: `1.0.0+1`
+- App version in `pubspec.yaml`: `1.0.4+2005`
 
 ## Important Working Rule
 
@@ -100,6 +100,33 @@ Common output directory:
 
 ```bash
 build/app/outputs/flutter-apk/
+```
+
+打包前先确认签名文件就位（缺失会回退 debug 签名）：
+
+```bash
+ls -l android/key.properties android/release.keystore
+```
+
+完整打包流程（实际使用的 Flutter 绝对路径，若 `flutter` 不在 `PATH`）：
+
+```bash
+/Users/jbrains/dev/flutter-sdk/bin/flutter build apk --release --split-per-abi
+```
+
+产物（正式签名）：
+
+- `app-arm64-v8a-release.apk`（主流手机，约 65MB）
+- `app-armeabi-v7a-release.apk`（老设备，约 98MB）
+- `app-x86_64-release.apk`（模拟器，约 72MB）
+
+版本升级与 tag（升级时同步更新 `pubspec.yaml` 的 `version` 与 build number，例如 `1.0.4+2005`）：
+
+```bash
+git commit -am "chore: 版本升级到 1.0.4"
+git tag v1.0.4
+git push origin codex/perf-and-leak-fixes
+git push origin v1.0.4
 ```
 
 ## Android Release Signing
