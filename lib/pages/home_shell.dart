@@ -66,7 +66,7 @@ class AppPageScaffold extends StatelessWidget {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(22, 20, 22, 10),
+          padding: const EdgeInsets.fromLTRB(22, 14, 22, 8),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -75,21 +75,15 @@ class AppPageScaffold extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      eyebrow.toUpperCase(),
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        letterSpacing: 1.8,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
                       title,
-                      style: Theme.of(context).textTheme.headlineLarge,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.headlineMedium?.copyWith(fontSize: 26),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     Text(
                       subtitle,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
@@ -252,7 +246,9 @@ class CapsuleButton extends StatelessWidget {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
         textStyle: Theme.of(context).textTheme.labelLarge,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.control)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
       ),
       icon: icon == null ? const SizedBox.shrink() : Icon(icon, size: 18),
       label: Text(label),
@@ -296,7 +292,9 @@ class ToolIconButton extends StatelessWidget {
           fixedSize: const Size(36, 36),
           padding: EdgeInsets.zero,
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.control)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.control),
+          ),
         ),
         icon: Icon(icon, size: 19),
       ),
@@ -624,7 +622,9 @@ Future<bool> confirmAction(
                             ? colorScheme.onError
                             : colorScheme.onPrimary,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppRadius.control),
+                          borderRadius: BorderRadius.circular(
+                            AppRadius.control,
+                          ),
                         ),
                       ),
                       child: Text(confirmLabel),
@@ -636,7 +636,9 @@ Future<bool> confirmAction(
                         minimumSize: const Size(double.infinity, 46),
                         foregroundColor: colorScheme.onSurfaceVariant,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppRadius.control),
+                          borderRadius: BorderRadius.circular(
+                            AppRadius.control,
+                          ),
                         ),
                       ),
                       child: const Text('取消'),
@@ -692,11 +694,7 @@ class _BottomDock extends StatelessWidget {
       activeIcon: Icons.video_collection,
       label: '任务',
     ),
-    (
-      icon: Icons.tune_outlined,
-      activeIcon: Icons.tune,
-      label: '设置',
-    ),
+    (icon: Icons.tune_outlined, activeIcon: Icons.tune, label: '设置'),
   ];
 
   @override
@@ -705,7 +703,9 @@ class _BottomDock extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
     // Frosted background tint: lighter on dark, more opaque on light.
-    final barColor = colorScheme.surface.withValues(alpha: isDark ? 0.72 : 0.85);
+    final barColor = colorScheme.surface.withValues(
+      alpha: isDark ? 0.72 : 0.85,
+    );
     final activeColor = colorScheme.primary;
     final inactiveColor = colorScheme.onSurfaceVariant.withValues(alpha: 0.6);
 

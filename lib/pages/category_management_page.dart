@@ -21,10 +21,7 @@ class CategoryManagementPage extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              colorScheme.surface,
-              theme.scaffoldBackgroundColor,
-            ],
+            colors: [colorScheme.surface, theme.scaffoldBackgroundColor],
           ),
         ),
         child: SafeArea(
@@ -45,12 +42,14 @@ class CategoryManagementPage extends StatelessWidget {
                       children: [
                         Text(
                           '分类管理',
-                          style: Theme.of(context).textTheme.headlineMedium,
+                          style: Theme.of(
+                            context,
+                          ).textTheme.headlineMedium?.copyWith(fontSize: 26),
                         ),
                         const SizedBox(height: 6),
                         Text(
                           '预置分类可以继续用，也支持新增、改名和长按删除。删除后，已关联素材会自动回到未分类。',
-                          style: Theme.of(context).textTheme.bodyMedium,
+                          style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
                     ),
