@@ -105,9 +105,11 @@ class QiniuUploadService {
   }
 
   /// 为私有空间生成带签名的下载 URL。
-  /// 签名规则：downloadUrl = domain + path + '?e=' + deadline + '&token=' + ak + ':' + sign
-  /// 其中 sign = urlSafeBase64(HMAC-SHA1(secret, path + '?e=' + deadline))，
-  /// path 是 '/'+objectKey，deadline 是秒级 Unix 时间戳。
+  /// 签名规则：downloadUrl = domain + '/' + key + '?e=' + deadline，
+  /// sign = urlSafeBase64(HMAC-SHA1(secretKey, downloadUrl))，
+  /// 最终 URL = downloadUrl + '&token=' + ak + ':' + sign。
+  /// 注意：签名串必须是完整 downloadUrl（含协议与 host），与最终请求 URL 一致，
+  /// 否则七牛服务端校验不通过。deadline 是秒级 Unix 时间戳。
   String createPrivateDownloadUrl({
     required SettingsState settings,
     required String objectKey,
@@ -120,11 +122,11 @@ class QiniuUploadService {
     );
     final deadline =
         DateTime.now().millisecondsSinceEpoch ~/ 1000 + expiresIn.inSeconds;
-    final path = '/${encodeObjectKeyForUrl(objectKey)}';
-    final signingStr = '$path?e=$deadline';
-    final signature = _hmacSha1Base64Url(config.secretKey, signingStr);
+    final encodedKey = encodeObjectKeyForUrl(objectKey);
+    final downloadUrl = '$resolvedDomain/$encodedKey?e=$deadline';
+    final signature = _hmacSha1Base64Url(config.secretKey, downloadUrl);
     final token = '${config.accessKey}:$signature';
-    return '$resolvedDomain$path?e=$deadline&token=$token';
+    return '$downloadUrl&token=$token';
   }
 
   Future<void> deleteObject({
