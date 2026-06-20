@@ -529,9 +529,10 @@ class AppState extends ChangeNotifier {
     try {
       final raw = await _storage.readState();
       if (raw != null && raw.trim().isNotEmpty) {
-        _restoreFromJson(jsonDecode(raw));
-        _syncSelectedAttachmentsFromPrompt();
-      }
+     _restoreFromJson(jsonDecode(raw));
+     _syncSelectedAttachmentsFromPrompt();
+     _backfillAttachmentSourceTaskId();
+   }
     } catch (error) {
       configStatusMessage = '本地配置读取失败：${_cleanError(error)}';
     } finally {
@@ -540,6 +541,48 @@ class AppState extends ChangeNotifier {
       _resumePollingAfterLifecycle();
     }
   }
+
+ /// 历史素材在落库时尚无 sourceTaskId 字段。加载持久化数据后，用图片任务的
+ /// imageResults[].attachmentId 反查 taskId，给 sourceTaskId 为空但确实产自
+ /// 某任务的素材补上归属，使其能在素材库里按任务折叠分组。已带 sourceTaskId
+ /// 的素材保持不变；回填结果会在下一次 savePersistedState 时随正常持久化落盘。
+ void _backfillAttachmentSourceTaskId() {
+   final index = buildAttachmentTaskIdIndex(tasks);
+   if (index.isEmpty) return;
+   var changed = false;
+   for (var i = 0; i < library.length; i++) {
+     final attachment = library[i];
+     if (attachment.sourceTaskId != null &&
+         attachment.sourceTaskId!.isNotEmpty) {
+       continue;
+     }
+     final taskId = index[attachment.id];
+     if (taskId == null) continue;
+     library[i] = attachment.copyWith(sourceTaskId: taskId);
+     changed = true;
+   }
+   if (changed) notifyListeners();
+ }
+
+ /// 由图片任务的 imageResults[].attachmentId 反查 taskId，建立
+ /// attachmentId -> taskId 索引。用于给历史素材回填 sourceTaskId，
+ /// 使其能在素材库里按任务折叠分组。
+ static Map<String, String> buildAttachmentTaskIdIndex(
+   Iterable<TaskRecord> tasks,
+ ) {
+   final index = <String, String>{};
+   for (final task in tasks) {
+     if (task.kind != TaskKind.image) continue;
+     for (final item in task.imageResults) {
+       final attachmentId = item.attachmentId;
+       if (attachmentId == null || attachmentId.isEmpty) continue;
+       if (!index.containsKey(attachmentId)) {
+         index[attachmentId] = task.id;
+       }
+     }
+   }
+   return index;
+ }
 
   void onAppLifecycleChanged(AppLifecycleState state) {
     final foreground = switch (state) {
