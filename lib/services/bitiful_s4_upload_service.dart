@@ -47,6 +47,7 @@ class BitifulS4UploadService {
       role: inferred.role,
       category: inferred.category,
       storageBucket: config.bucket,
+      storageDomain: _publicBaseUrl(config),
       storageEndpoint: config.endpoint,
       storageRegion: config.region,
       fileSizeBytes: file.bytes.length,

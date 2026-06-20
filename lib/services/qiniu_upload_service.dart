@@ -83,6 +83,7 @@ class QiniuUploadService {
       role: inferred.role,
       category: inferred.category,
       storageBucket: config.bucket,
+      storageDomain: config.domain,
       fileSizeBytes: file.bytes.length,
     );
   }
@@ -111,16 +112,19 @@ class QiniuUploadService {
     required SettingsState settings,
     required String objectKey,
     required Duration expiresIn,
+    String? domain,
   }) {
     final config = _QiniuConfig.fromSettings(settings);
-    final domain = normalizePublicUrlBase(config.domain);
+    final resolvedDomain = normalizePublicUrlBase(
+      domain?.trim() ?? config.domain,
+    );
     final deadline =
         DateTime.now().millisecondsSinceEpoch ~/ 1000 + expiresIn.inSeconds;
     final path = '/${encodeObjectKeyForUrl(objectKey)}';
     final signingStr = '$path?e=$deadline';
     final signature = _hmacSha1Base64Url(config.secretKey, signingStr);
     final token = '${config.accessKey}:$signature';
-    return '$domain$path?e=$deadline&token=$token';
+    return '$resolvedDomain$path?e=$deadline&token=$token';
   }
 
   Future<void> deleteObject({

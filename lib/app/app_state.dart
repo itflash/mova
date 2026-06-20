@@ -2821,6 +2821,7 @@ class AppState extends ChangeNotifier {
         storageBucket: result.storageBucket,
         storageEndpoint: result.storageEndpoint,
         storageRegion: result.storageRegion,
+        storageDomain: result.storageDomain,
         fileSizeBytes: result.fileSizeBytes,
         sourceTaskId: sourceTaskId,
       ),
@@ -3780,13 +3781,19 @@ class AppState extends ChangeNotifier {
   }) async {
     if (attachment.storageProvider == StorageProvider.qiniu) {
       final objectKey = attachment.objectKey?.trim();
-      final configuredDomain = settings.qiniuDomain.trim();
-      if (objectKey == null || objectKey.isEmpty || configuredDomain.isEmpty) {
+      // 域名优先取素材上传时记录的 storageDomain，回退到当前全局配置。
+      // 这样切换到其他空间后，旧素材仍用各自归属域名访问，不会全部失效。
+      final resolvedDomain =
+          (attachment.storageDomain?.trim().isNotEmpty == true
+          ? attachment.storageDomain!.trim()
+          : settings.qiniuDomain.trim());
+      if (objectKey == null || objectKey.isEmpty || resolvedDomain.isEmpty) {
         return attachment.url;
       }
+      final normalizedDomain = normalizePublicUrlBase(resolvedDomain);
       // 公开空间直接拼域名 + key；私有空间需要带签名 token 才能访问。
       if (qiniuBucketPrivate != true) {
-        return '${normalizePublicUrlBase(configuredDomain)}/${encodeObjectKeyForUrl(objectKey)}';
+        return '$normalizedDomain/${encodeObjectKeyForUrl(objectKey)}';
       }
       final cacheKey = 'qiniu:${purpose.name}:${attachment.id}:$objectKey';
       final now = DateTime.now();
@@ -3803,6 +3810,7 @@ class AppState extends ChangeNotifier {
       final url = _qiniuUploadService.createPrivateDownloadUrl(
         settings: settings,
         objectKey: objectKey,
+        domain: normalizedDomain,
         expiresIn: expiresIn,
       );
       _signedUrlCache[cacheKey] = _SignedUrlCacheEntry(
@@ -3869,6 +3877,7 @@ class AppState extends ChangeNotifier {
     'storageBucket': value.storageBucket,
     'storageEndpoint': value.storageEndpoint,
     'storageRegion': value.storageRegion,
+    'storageDomain': value.storageDomain,
     'fileSizeBytes': value.fileSizeBytes,
     'sourceTaskId': value.sourceTaskId,
   };
@@ -3937,6 +3946,7 @@ class AppState extends ChangeNotifier {
       storageBucket: _nullableStringValue(map['storageBucket']),
       storageEndpoint: _nullableStringValue(map['storageEndpoint']),
       storageRegion: _nullableStringValue(map['storageRegion']),
+      storageDomain: _nullableStringValue(map['storageDomain']),
       fileSizeBytes: map['fileSizeBytes'] is num
           ? (map['fileSizeBytes'] as num).round()
           : null,
