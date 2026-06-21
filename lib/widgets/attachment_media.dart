@@ -220,7 +220,7 @@ class _AttachmentPreviewSheetState extends State<AttachmentPreviewSheet> {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: background,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppRadius.sheet),
                     boxShadow: const [
                       BoxShadow(
                         color: Color(0x33000000),

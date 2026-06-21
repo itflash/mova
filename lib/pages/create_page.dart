@@ -52,7 +52,7 @@ class _CreatePageState extends State<CreatePage> {
     _handleMentionSheet(context, state);
     _ensureToolResolution(state);
 
-    final canSubmit = state.validationMessages.isEmpty && !state.isSubmitting;
+    final canSubmit = !state.isSubmitting;
     final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
 
     return AppPageScaffold(
@@ -201,11 +201,10 @@ class _CreatePageState extends State<CreatePage> {
                     _ValueRow(
                       label: '时长',
                       child: SizedBox(
-                        width: 92,
-                        child: TextField(
+                        width: 86,
+                        child: _DurationStepperField(
                           controller: _durationController,
-                          textAlign: TextAlign.right,
-                          decoration: const InputDecoration(isDense: true),
+                          value: state.metadata.duration,
                           onChanged: (value) => state.updateMetadata(
                             (current) => current.copyWith(duration: value),
                           ),
@@ -288,34 +287,6 @@ class _CreatePageState extends State<CreatePage> {
                       ),
                     ),
                     const PanelDivider(),
-                    _ValueRow(
-                      label: 'Seed',
-                      child: SizedBox(
-                        width: 140,
-                        child: TextField(
-                          controller: _seedController,
-                          textAlign: TextAlign.right,
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            hintText: '留空',
-                          ),
-                          onChanged: (value) => state.updateMetadata(
-                            (current) => current.copyWith(seed: value),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6, bottom: 4),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          '留空时由上游随机生成；填写后更容易复现相近结果，适合做多轮微调。',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
-                    ),
-                    const PanelDivider(),
                     SwitchListTile.adaptive(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('生成音频'),
@@ -333,6 +304,37 @@ class _CreatePageState extends State<CreatePage> {
               ),
               const SizedBox(height: 16),
               SectionLabel('高级与预览'),
+              _PreviewDisclosureCard(
+                title: 'Seed',
+                subtitle: state.metadata.seed.trim().isEmpty
+                    ? '默认留空，由上游随机生成。'
+                    : '当前使用固定 Seed：${state.metadata.seed}',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextField(
+                        controller: _seedController,
+                        textAlign: TextAlign.left,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          hintText: '留空',
+                        ),
+                        onChanged: (value) => state.updateMetadata(
+                          (current) => current.copyWith(seed: value),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '只有需要复现相近结果或做多轮微调时再填写。',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
               _PreviewDisclosureCard(
                 title: '请求预览',
                 subtitle: '提交前查看将发送给 AgentEarth 的工具和参数。',
@@ -393,6 +395,17 @@ class _CreatePageState extends State<CreatePage> {
   }
 
   Future<void> _submitTask(BuildContext context, AppState state) async {
+    if (!state.isAgentEarthConfigured || state.validationMessages.isNotEmpty) {
+      final submitted = await state.submitTask();
+      if (submitted || !context.mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(state.submitErrorMessage ?? '提交失败')),
+        );
+      return;
+    }
+
     final confirmed = await confirmAction(
       context,
       title: '提交生成任务？',
@@ -783,7 +796,7 @@ class _PreviewDisclosureCardState extends State<_PreviewDisclosureCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           InkWell(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppRadius.control),
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
@@ -1489,6 +1502,120 @@ class _FallbackThumb extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DurationStepperField extends StatelessWidget {
+  const _DurationStepperField({
+    required this.controller,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  int? get _seconds => int.tryParse(value.trim());
+
+  void _step(int delta) {
+    final current = _seconds ?? AppState.minSeedanceDurationSeconds;
+    final next = (current + delta).clamp(
+      AppState.minSeedanceDurationSeconds,
+      AppState.maxSeedanceDurationSeconds,
+    );
+    onChanged(next.toString());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final seconds = _seconds;
+    final canDecrease =
+        seconds == null || seconds > AppState.minSeedanceDurationSeconds;
+    final canIncrease =
+        seconds == null || seconds < AppState.maxSeedanceDurationSeconds;
+
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      textAlign: TextAlign.center,
+      decoration: InputDecoration(
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
+        suffixIcon: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 22,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _DurationStepChevron(
+                    icon: Icons.keyboard_arrow_up_rounded,
+                    tooltip: '增加 1 秒',
+                    onPressed: canIncrease ? () => _step(1) : null,
+                  ),
+                  _DurationStepChevron(
+                    icon: Icons.keyboard_arrow_down_rounded,
+                    tooltip: '减少 1 秒',
+                    onPressed: canDecrease ? () => _step(-1) : null,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        suffixIconConstraints: const BoxConstraints(
+          minWidth: 28,
+          minHeight: 40,
+        ),
+      ),
+      onChanged: onChanged,
+    );
+  }
+}
+
+class _DurationStepChevron extends StatelessWidget {
+  const _DurationStepChevron({
+    required this.icon,
+    required this.tooltip,
+    this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final enabled = onPressed != null;
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        child: InkResponse(
+          onTap: onPressed,
+          radius: 13,
+          containedInkWell: true,
+          child: SizedBox(
+            width: 22,
+            height: 18,
+            child: Icon(
+              icon,
+              size: 18,
+              color: enabled
+                  ? colorScheme.onSurfaceVariant
+                  : colorScheme.onSurfaceVariant.withValues(alpha: 0.34),
+            ),
+          ),
+        ),
       ),
     );
   }

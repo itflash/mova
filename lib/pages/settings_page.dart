@@ -52,7 +52,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   onChanged: (value) => state.updateSettings(
                     (current) => current.copyWith(agentEarthApiKey: value),
                   ),
-                  action: ToolIconButton(
+                  action: _FieldActionButton(
                     tooltip: '测试 AgentEarth 配置',
                     icon: state.isTestingAgentEarth
                         ? Icons.more_horiz_rounded
@@ -115,7 +115,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                 (current) =>
                                     current.copyWith(qiniuBucket: value),
                               ),
-                              action: ToolIconButton(
+                              action: _FieldActionButton(
                                 tooltip: '拉取七牛 Bucket 列表',
                                 icon: state.isFetchingBuckets
                                     ? Icons.more_horiz_rounded
@@ -138,7 +138,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                 (current) =>
                                     current.copyWith(qiniuDomain: value),
                               ),
-                              action: ToolIconButton(
+                              action: _FieldActionButton(
                                 tooltip: '测试七牛配置',
                                 icon: state.isTestingQiniu
                                     ? Icons.more_horiz_rounded
@@ -222,7 +222,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                   bitifulPublicDomain: value,
                                 ),
                               ),
-                              action: ToolIconButton(
+                              action: _FieldActionButton(
                                 tooltip: '测试缤纷云配置',
                                 icon: state.isTestingBitiful
                                     ? Icons.more_horiz_rounded
@@ -241,9 +241,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 if (state.currentStorageProvider == StorageProvider.bitifulS4)
                   const Padding(
                     padding: EdgeInsets.fromLTRB(2, 14, 2, 14),
-                    child: _SettingsHintCard(
+                    child: InlineAlert(
                       message:
                           'Bitiful S4 通常使用默认 Endpoint 和 cn-east-1。自定义访问域名只有在你配置了 CDN 或绑定了自有域名时才需要填写。',
+                      tone: InlineAlertTone.info,
                     ),
                   ),
                 const PanelDivider(),
@@ -455,27 +456,134 @@ class _ValueEditorRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return _SettingsInputRow(
       title: title,
-      builder: (context, compact) => Row(
-        children: [
-          Expanded(
-            child: _SyncedTextField(
-              value: value,
-              onChanged: onChanged,
-              maxLines: 1,
-              textAlign: compact ? TextAlign.left : TextAlign.right,
-              decoration: InputDecoration(
-                hintText: placeholder,
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-              ),
-            ),
+      builder: (context, compact) => _SyncedTextField(
+        value: value,
+        onChanged: onChanged,
+        maxLines: 1,
+        textAlign: compact ? TextAlign.left : TextAlign.right,
+        decoration: InputDecoration(
+          hintText: placeholder,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
           ),
-          if (action != null) ...[const SizedBox(width: 8), action!],
-        ],
+          suffixIcon: action == null
+              ? null
+              : Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 4),
+                  child: action,
+                ),
+          suffixIconConstraints: action == null
+              ? null
+              : const BoxConstraints(minWidth: 42, minHeight: 42),
+        ),
       ),
+    );
+  }
+}
+
+class _FieldActionButton extends StatelessWidget {
+  const _FieldActionButton({
+    required this.icon,
+    required this.tooltip,
+    this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: tooltip,
+      child: IconButton(
+        onPressed: onPressed,
+        style: IconButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          foregroundColor: colorScheme.primary,
+          disabledForegroundColor: colorScheme.onSurfaceVariant.withValues(
+            alpha: 0.45,
+          ),
+          fixedSize: const Size(38, 38),
+          padding: EdgeInsets.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.control),
+          ),
+        ),
+        icon: Icon(icon, size: 18),
+      ),
+    );
+  }
+}
+
+class _FieldSuffixActions extends StatelessWidget {
+  const _FieldSuffixActions({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = children;
+    if (visible.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(end: 4),
+      child: Row(mainAxisSize: MainAxisSize.min, children: visible),
+    );
+  }
+}
+
+class _FieldOptionsButton extends StatelessWidget {
+  const _FieldOptionsButton({required this.options, required this.onSelected});
+
+  final List<String> options;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: '选择已拉取项',
+      onSelected: onSelected,
+      itemBuilder: (context) {
+        return options
+            .map<PopupMenuEntry<String>>(
+              (item) => PopupMenuItem<String>(
+                value: item,
+                child: Text(item, maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+            )
+            .toList();
+      },
+      icon: const Icon(Icons.arrow_drop_down_rounded, size: 20),
+      style: IconButton.styleFrom(
+        backgroundColor: Colors.transparent,
+        fixedSize: const Size(38, 38),
+        padding: EdgeInsets.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
+      ),
+    );
+  }
+}
+
+class _RevealFieldButton extends StatelessWidget {
+  const _RevealFieldButton({required this.reveal, required this.onPressed});
+
+  final bool reveal;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return _FieldActionButton(
+      tooltip: reveal ? '隐藏内容' : '显示内容',
+      icon: reveal ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+      onPressed: onPressed,
     );
   }
 }
@@ -626,51 +734,37 @@ class _BucketEditorRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final suffixChildren = <Widget>[
+      if (options.isNotEmpty)
+        _FieldOptionsButton(options: options, onSelected: onChanged),
+      ?action,
+    ];
+
     return _SettingsInputRow(
       title: title,
-      builder: (context, compact) => Row(
-        children: [
-          Expanded(
-            child: _SyncedTextField(
-              value: value,
-              onChanged: onChanged,
-              maxLines: 1,
-              style: Theme.of(context).textTheme.bodyLarge,
-              textAlign: compact ? TextAlign.left : TextAlign.right,
-              decoration: InputDecoration(
-                hintText: placeholder,
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-              ),
-            ),
+      builder: (context, compact) => _SyncedTextField(
+        value: value,
+        onChanged: onChanged,
+        maxLines: 1,
+        style: Theme.of(context).textTheme.bodyLarge,
+        textAlign: compact ? TextAlign.left : TextAlign.right,
+        decoration: InputDecoration(
+          hintText: placeholder,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
           ),
-          if (options.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            PopupMenuButton<String>(
-              tooltip: '选择已拉取项',
-              onSelected: onChanged,
-              itemBuilder: (context) {
-                return options
-                    .map<PopupMenuEntry<String>>(
-                      (item) => PopupMenuItem<String>(
-                        value: item,
-                        child: Text(
-                          item,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    )
-                    .toList();
-              },
-              icon: const Icon(Icons.arrow_drop_down_rounded),
-            ),
-          ],
-          if (action != null) ...[const SizedBox(width: 8), action!],
-        ],
+          suffixIcon: suffixChildren.isEmpty
+              ? null
+              : _FieldSuffixActions(children: suffixChildren),
+          suffixIconConstraints: suffixChildren.isEmpty
+              ? null
+              : BoxConstraints(
+                  minWidth: 42.0 * suffixChildren.length,
+                  minHeight: 42,
+                ),
+        ),
       ),
     );
   }
@@ -695,82 +789,32 @@ class _SecureRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final suffixChildren = <Widget>[
+      _RevealFieldButton(reveal: reveal, onPressed: onRevealChanged),
+      ?action,
+    ];
+
     return _SettingsInputRow(
       title: title,
-      builder: (context, compact) => Row(
-        children: [
-          Expanded(
-            child: _SyncedTextField(
-              value: value,
-              onChanged: onChanged,
-              obscureText: !reveal,
-              maxLines: 1,
-              style: Theme.of(context).textTheme.bodyLarge,
-              textAlign: compact ? TextAlign.left : TextAlign.right,
-              decoration: const InputDecoration(
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-              ),
-            ),
+      builder: (context, compact) => _SyncedTextField(
+        value: value,
+        onChanged: onChanged,
+        obscureText: !reveal,
+        maxLines: 1,
+        style: Theme.of(context).textTheme.bodyLarge,
+        textAlign: compact ? TextAlign.left : TextAlign.right,
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
           ),
-          IconButton(
-            onPressed: onRevealChanged,
-            icon: Icon(
-              reveal
-                  ? Icons.visibility_outlined
-                  : Icons.visibility_off_outlined,
-              size: 18,
-            ),
+          suffixIcon: _FieldSuffixActions(children: suffixChildren),
+          suffixIconConstraints: BoxConstraints(
+            minWidth: 42.0 * suffixChildren.length,
+            minHeight: 42,
           ),
-          if (action != null) ...[const SizedBox(width: 4), action!],
-        ],
-      ),
-    );
-  }
-}
-
-class _SettingsHintCard extends StatelessWidget {
-  const _SettingsHintCard({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(AppRadius.control),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.42),
         ),
-      ),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.tips_and_updates_outlined,
-            size: 16,
-            color: colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: theme.textTheme.bodySmall?.copyWith(
-                height: 1.45,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

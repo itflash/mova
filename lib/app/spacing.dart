@@ -47,11 +47,14 @@ class AppSpacing {
 class AppRadius {
   AppRadius._();
 
-  /// Cards, panels, and sheets.
-  static const double card = 16;
+  /// Cards and panels.
+  static const double card = 8;
+
+  /// Modal sheets and large overlay surfaces.
+  static const double sheet = 14;
 
   /// Buttons, inputs, and interactive surfaces.
-  static const double control = 12;
+  static const double control = 8;
 
   /// Pills, badges, and fully rounded elements.
   static const double pill = 999;

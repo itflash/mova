@@ -503,6 +503,134 @@ class StatusPill extends StatelessWidget {
   }
 }
 
+enum InlineAlertTone { info, warning, error, success }
+
+class InlineAlert extends StatelessWidget {
+  const InlineAlert({
+    super.key,
+    required this.message,
+    this.title,
+    this.tone = InlineAlertTone.info,
+    this.action,
+  });
+
+  final String? title;
+  final String message;
+  final InlineAlertTone tone;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final (color, icon) = switch (tone) {
+      InlineAlertTone.error => (colorScheme.error, Icons.error_outline_rounded),
+      InlineAlertTone.warning => (
+        colorScheme.tertiary,
+        Icons.warning_amber_rounded,
+      ),
+      InlineAlertTone.success => (
+        colorScheme.primary,
+        Icons.check_circle_outline_rounded,
+      ),
+      InlineAlertTone.info => (
+        colorScheme.onSurfaceVariant,
+        Icons.info_outline_rounded,
+      ),
+    };
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (title != null) ...[
+                  Text(
+                    title!,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                ],
+                Text(
+                  message,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (action != null) ...[const SizedBox(width: 10), action!],
+        ],
+      ),
+    );
+  }
+}
+
+class ProgressRow extends StatelessWidget {
+  const ProgressRow({
+    super.key,
+    required this.label,
+    required this.value,
+    this.helper,
+  });
+
+  final String label;
+  final double? value;
+  final String? helper;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final clamped = value?.clamp(0.0, 1.0);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            if (helper != null)
+              Text(helper!, style: theme.textTheme.labelMedium),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          child: LinearProgressIndicator(
+            value: clamped,
+            minHeight: 6,
+            backgroundColor: theme.colorScheme.surfaceContainerHighest,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Lightweight selectable pill used for category tags and role pickers.
 ///
 /// FilterChip carries a border + elevated surface that reads as a row of

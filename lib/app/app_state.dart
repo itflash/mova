@@ -21,6 +21,8 @@ import '../services/video_composition_service.dart';
 
 class AppState extends ChangeNotifier {
   static final RegExp promptTokenPattern = RegExp(r'@\{[^}]+\}');
+  static const int minSeedanceDurationSeconds = 4;
+  static const int maxSeedanceDurationSeconds = 15;
   final SeedanceService _seedanceService;
   final NativeFilePicker _filePicker;
   final QiniuUploadService _qiniuUploadService;
@@ -425,6 +427,17 @@ class AppState extends ChangeNotifier {
     }
     if (effectiveVideoPrompt.length > 5000) {
       messages.add('Prompt 不能超过 5000 字符。');
+    }
+    final durationSeconds = int.tryParse(metadata.duration.trim());
+    if (durationSeconds == null) {
+      messages.add(
+        '时长必须是 $minSeedanceDurationSeconds-$maxSeedanceDurationSeconds 秒之间的整数。',
+      );
+    } else if (durationSeconds < minSeedanceDurationSeconds ||
+        durationSeconds > maxSeedanceDurationSeconds) {
+      messages.add(
+        'Seedance2 当前支持 $minSeedanceDurationSeconds-$maxSeedanceDurationSeconds 秒视频，请调整时长。',
+      );
     }
 
     if (activeMode == ModeId.text && selectedAttachments.isNotEmpty) {

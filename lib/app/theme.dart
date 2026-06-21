@@ -15,14 +15,14 @@ ThemeData buildLightTheme() {
     blendLevel: 2,
     appBarStyle: FlexAppBarStyle.background,
     subThemesData: const FlexSubThemesData(
-      cardRadius: 16,
-      inputDecoratorRadius: 12,
-      navigationBarIndicatorRadius: 12,
+      cardRadius: 8,
+      inputDecoratorRadius: 8,
+      navigationBarIndicatorRadius: 8,
       navigationBarHeight: 64,
       thinBorderWidth: 0.7,
       blendOnLevel: 4,
       blendOnColors: false,
-      segmentedButtonRadius: 10,
+      segmentedButtonRadius: 8,
       segmentedButtonUnselectedForegroundSchemeColor: SchemeColor.onSurface,
     ),
   );
@@ -43,22 +43,22 @@ ThemeData buildLightTheme() {
         headlineLarge: TextStyle(
           fontSize: 38,
           fontWeight: FontWeight.w700,
-          letterSpacing: -1.4,
+          letterSpacing: 0,
         ),
         headlineMedium: TextStyle(
           fontSize: 30,
           fontWeight: FontWeight.w700,
-          letterSpacing: -0.9,
+          letterSpacing: 0,
         ),
         titleLarge: TextStyle(
           fontSize: 21,
           fontWeight: FontWeight.w700,
-          letterSpacing: -0.4,
+          letterSpacing: 0,
         ),
         titleMedium: TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w600,
-          letterSpacing: -0.2,
+          letterSpacing: 0,
         ),
         titleSmall: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
         bodyLarge: TextStyle(fontSize: 16, height: 1.4),
@@ -104,23 +104,23 @@ ThemeData buildLightTheme() {
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       floatingLabelStyle: TextStyle(color: colorScheme.primary),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         borderSide: BorderSide(color: colorScheme.outlineVariant),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         borderSide: BorderSide(color: colorScheme.outlineVariant),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         borderSide: BorderSide(color: colorScheme.error, width: 1.5),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         borderSide: BorderSide(color: colorScheme.error, width: 1.5),
       ),
       labelStyle: TextStyle(color: colorScheme.onSurfaceVariant),
@@ -132,7 +132,9 @@ ThemeData buildLightTheme() {
       style: IconButton.styleFrom(
         foregroundColor: colorScheme.onSurface,
         backgroundColor: colorScheme.surfaceContainerHighest,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
         fixedSize: const Size(40, 40),
       ),
     ),
@@ -142,7 +144,9 @@ ThemeData buildLightTheme() {
         minimumSize: const Size(0, 46),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
         elevation: 0,
       ),
     ),
@@ -151,7 +155,9 @@ ThemeData buildLightTheme() {
         minimumSize: const Size(0, 46),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
         side: BorderSide(color: colorScheme.outlineVariant),
       ),
     ),
@@ -160,7 +166,9 @@ ThemeData buildLightTheme() {
         minimumSize: const Size(0, 46),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
       ),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
@@ -168,7 +176,9 @@ ThemeData buildLightTheme() {
         minimumSize: const Size(0, 46),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
         elevation: 0,
       ),
     ),
@@ -259,14 +269,14 @@ ThemeData buildDarkTheme() {
     blendLevel: 4,
     appBarStyle: FlexAppBarStyle.background,
     subThemesData: const FlexSubThemesData(
-      cardRadius: 16,
-      inputDecoratorRadius: 12,
-      navigationBarIndicatorRadius: 12,
+      cardRadius: 8,
+      inputDecoratorRadius: 8,
+      navigationBarIndicatorRadius: 8,
       navigationBarHeight: 64,
       thinBorderWidth: 0.7,
       blendOnLevel: 8,
       blendOnColors: false,
-      segmentedButtonRadius: 10,
+      segmentedButtonRadius: 8,
     ),
   );
 
@@ -305,23 +315,23 @@ ThemeData buildDarkTheme() {
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       floatingLabelStyle: TextStyle(color: colorScheme.primary),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         borderSide: BorderSide(color: colorScheme.outlineVariant),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         borderSide: BorderSide(color: colorScheme.outlineVariant),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         borderSide: BorderSide(color: colorScheme.error, width: 1.5),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         borderSide: BorderSide(color: colorScheme.error, width: 1.5),
       ),
       labelStyle: TextStyle(color: colorScheme.onSurfaceVariant),
@@ -335,7 +345,9 @@ ThemeData buildDarkTheme() {
         minimumSize: const Size(0, 46),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
         elevation: 0,
       ),
     ),
@@ -344,7 +356,9 @@ ThemeData buildDarkTheme() {
         minimumSize: const Size(0, 46),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
         side: BorderSide(color: colorScheme.outlineVariant),
       ),
     ),
@@ -353,7 +367,9 @@ ThemeData buildDarkTheme() {
         minimumSize: const Size(0, 46),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
       ),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
@@ -361,7 +377,9 @@ ThemeData buildDarkTheme() {
         minimumSize: const Size(0, 46),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
         elevation: 0,
       ),
     ),

@@ -125,11 +125,10 @@ class _LibraryPageState extends State<LibraryPage> {
                 const SizedBox(height: 16),
                 if (appState.uploadErrorMessage != null) ...[
                   UtilityPanel(
-                    child: Text(
-                      appState.uploadErrorMessage!,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
+                    child: InlineAlert(
+                      title: '上传失败',
+                      message: appState.uploadErrorMessage!,
+                      tone: InlineAlertTone.error,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -1956,7 +1955,7 @@ class _AttachmentLabelDisplay extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppRadius.control),
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),

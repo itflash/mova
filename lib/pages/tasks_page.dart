@@ -449,6 +449,7 @@ class _TaskFilterBar extends StatelessWidget {
     );
   }
 }
+
 class _TaskArchiveMenu extends StatelessWidget {
   const _TaskArchiveMenu({
     required this.showArchivedTasks,
@@ -810,7 +811,7 @@ class _JsonBlockState extends State<_JsonBlock> {
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppRadius.card),
               ),
               child: SelectableText(
                 widget.value,
@@ -1127,7 +1128,11 @@ class _TaskCardShell extends StatelessWidget {
                           if (anomalyPills.length == 1)
                             anomalyPills.first
                           else
-                            Wrap(spacing: 8, runSpacing: 8, children: anomalyPills),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: anomalyPills,
+                            ),
                         ],
                       ],
                     ),
@@ -1158,17 +1163,14 @@ class _TaskCardShell extends StatelessWidget {
                 _PollLogPanel(logs: task.pollLogs),
               ],
               ?resultSection,
-             if (task.lastError != null) ...[
+              if (task.lastError != null) ...[
                 const PanelDivider(),
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
-                  child: Text(
-                    task.lastError!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: tone),
+                  child: InlineAlert(
+                    title: '最近异常',
+                    message: task.lastError!,
+                    tone: InlineAlertTone.error,
                   ),
                 ),
               ],
@@ -1201,20 +1203,12 @@ class _VideoTaskCard extends StatelessWidget {
       sections.add(
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '下载中 ${task.downloadProgress}%',
-                style: Theme.of(context).textTheme.labelMedium,
-              ),
-              const SizedBox(height: 8),
-              LinearProgressIndicator(
-                value: task.downloadProgress <= 0
-                    ? null
-                    : task.downloadProgress / 100,
-              ),
-            ],
+          child: ProgressRow(
+            label: '下载结果',
+            helper: '${task.downloadProgress}%',
+            value: task.downloadProgress <= 0
+                ? null
+                : task.downloadProgress / 100,
           ),
         ),
       );
@@ -1523,7 +1517,10 @@ class _TaskVideoPreviewState extends State<_TaskVideoPreview> {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Colors.black.withValues(alpha: 0.13), Colors.black.withValues(alpha: 0.54)],
+              colors: [
+                Colors.black.withValues(alpha: 0.13),
+                Colors.black.withValues(alpha: 0.54),
+              ],
             ),
           ),
         ),

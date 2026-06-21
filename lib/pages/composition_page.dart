@@ -53,10 +53,13 @@ class CompositionPage extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    FilledButton.icon(
-                      onPressed: state.pickAndAddLocalCompositionVideo,
-                      icon: const Icon(Icons.add_rounded, size: 18),
-                      label: const Text('本地视频'),
+                    Tooltip(
+                      message: '添加本地视频',
+                      child: FilledButton.icon(
+                        onPressed: state.pickAndAddLocalCompositionVideo,
+                        icon: const Icon(Icons.add_rounded, size: 18),
+                        label: const Text('添加视频片段'),
+                      ),
                     ),
                     FilledButton.tonalIcon(
                       onPressed: () =>
@@ -166,16 +169,31 @@ class CompositionPage extends StatelessWidget {
                 ),
                 if (state.compositionExportErrorMessage != null) ...[
                   const SizedBox(height: 10),
-                  Text(
-                    state.compositionExportErrorMessage!,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
+                  InlineAlert(
+                    title: '导出失败',
+                    message: state.compositionExportErrorMessage!,
+                    tone: InlineAlertTone.error,
+                  ),
+                ],
+                if (isExporting) ...[
+                  const SizedBox(height: 12),
+                  ProgressRow(
+                    label: state.compositionExportStage.isEmpty
+                        ? '正在导出'
+                        : state.compositionExportStage,
+                    helper: '${state.compositionExportProgress}%',
+                    value: state.compositionExportProgress <= 0
+                        ? null
+                        : state.compositionExportProgress / 100,
                   ),
                 ],
                 if (state.compositionExportResult != null) ...[
                   const SizedBox(height: 10),
-                  Text('已导出：${state.compositionExportResult!.fileName}'),
+                  InlineAlert(
+                    title: '导出完成',
+                    message: '已导出：${state.compositionExportResult!.fileName}',
+                    tone: InlineAlertTone.success,
+                  ),
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
@@ -486,32 +504,26 @@ class _ClipIconActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color = foregroundColor ?? theme.colorScheme.onSurfaceVariant;
-    return Semantics(
-      label: label,
-      button: true,
-      child: Tooltip(
-        message: label,
-        child: IconButton(
-          onPressed: onPressed,
-          style: IconButton.styleFrom(
-            backgroundColor:
-                backgroundColor ?? theme.colorScheme.surfaceContainerHighest,
-            foregroundColor: color,
-            fixedSize: const Size(40, 40),
-            padding: EdgeInsets.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppRadius.control),
-            ),
-            side: BorderSide(
-              color:
-                  borderColor ??
-                  theme.colorScheme.outlineVariant.withValues(alpha: 0.7),
-            ),
-          ),
-          icon: Icon(icon, size: 19),
+    return IconButton(
+      tooltip: label,
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        backgroundColor:
+            backgroundColor ?? theme.colorScheme.surfaceContainerHighest,
+        foregroundColor: color,
+        fixedSize: const Size(40, 40),
+        padding: EdgeInsets.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
+        side: BorderSide(
+          color:
+              borderColor ??
+              theme.colorScheme.outlineVariant.withValues(alpha: 0.7),
         ),
       ),
+      icon: Icon(icon, size: 19),
     );
   }
 }
@@ -551,10 +563,7 @@ class _NeutralActionButton extends StatelessWidget {
             ),
           ),
         ),
-        icon: IconTheme.merge(
-          data: const IconThemeData(size: 18),
-          child: icon,
-        ),
+        icon: IconTheme.merge(data: const IconThemeData(size: 18), child: icon),
         label: Text(label),
       ),
     );
@@ -874,15 +883,11 @@ class _TrimTimeline extends StatelessWidget {
                     ),
                     Positioned(
                       left: (startX - 8).clamp(0, width - 16),
-                      child: _TimelineMarker(
-                        color: theme.colorScheme.primary,
-                      ),
+                      child: _TimelineMarker(color: theme.colorScheme.primary),
                     ),
                     Positioned(
                       left: (endX - 8).clamp(0, width - 16),
-                      child: _TimelineMarker(
-                        color: theme.colorScheme.tertiary,
-                      ),
+                      child: _TimelineMarker(color: theme.colorScheme.tertiary),
                     ),
                     SliderTheme(
                       data: SliderTheme.of(context).copyWith(
@@ -1038,7 +1043,10 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.black.withValues(alpha: 0.13), Colors.black.withValues(alpha: 0.54)],
+                colors: [
+                  Colors.black.withValues(alpha: 0.13),
+                  Colors.black.withValues(alpha: 0.54),
+                ],
               ),
             ),
           ),

@@ -54,11 +54,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('A.mp4'), findsOneWidget);
-    expect(find.text('裁剪'), findsOneWidget);
-    expect(find.text('更换'), findsOneWidget);
-    expect(find.text('上移'), findsOneWidget);
-    expect(find.text('下移'), findsOneWidget);
-    expect(find.text('删除'), findsOneWidget);
+    expect(find.byTooltip('裁剪'), findsOneWidget);
+    expect(find.byTooltip('更换视频'), findsOneWidget);
+    expect(find.byTooltip('上移'), findsOneWidget);
+    expect(find.byTooltip('下移'), findsOneWidget);
+    expect(find.byTooltip('删除'), findsOneWidget);
     expect(find.text('转场'), findsOneWidget);
   });
 
@@ -96,8 +96,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('裁剪片段'), findsOneWidget);
-    expect(find.text('开始 00:00'), findsOneWidget);
-    expect(find.text('结束 00:15'), findsOneWidget);
+    expect(find.text('当前位置 00:00 · 范围 00:00 - 00:15'), findsOneWidget);
     expect(find.text('设为开始'), findsOneWidget);
     expect(find.text('设为结束'), findsOneWidget);
     expect(find.text('保存裁剪'), findsOneWidget);

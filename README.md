@@ -210,7 +210,7 @@ Mova 是一个纯客户端的 Flutter 创作应用，面向“图像生成、视
 
 已知当前版本：
 
-- App version: `1.0.5+2006`
+- App version: `1.0.6+2007`
 - Android application id: `com.jbrains.mova`
 - iOS bundle id: `com.jbrains.mova`
 
