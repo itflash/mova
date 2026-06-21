@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -198,6 +199,83 @@ void main() {
       'https://signed.example.com/seedance-materials/reference_image/hero.png?X-Amz-Signature=test',
     );
   });
+
+  test(
+    'restored qiniu private attachment preview refreshes bucket privacy and signs url',
+    () async {
+      final storage = _MemoryAppStorage();
+      storage.value = jsonEncode({
+        'version': 4,
+        'settings': {
+          'storageProvider': StorageProvider.qiniu.name,
+          'qiniuAccessKey': 'ak',
+          'qiniuSecretKey': 'sk',
+          'qiniuBucket': 'qiniu-bucket',
+          'qiniuDomain': 'https://cdn.example.com',
+        },
+        'library': [
+          {
+            'id': 'qiniu-image',
+            'label': 'hero.png',
+            'role': AttachmentRole.referenceImage.name,
+            'kind': AttachmentKind.image.name,
+            'fileName': 'hero.png',
+            'category': '角色',
+            'createdAt': DateTime(2026).toIso8601String(),
+            'status': AttachmentStatus.uploaded.name,
+            'url':
+                'https://cdn.example.com/seedance-materials/reference_image/hero.png',
+            'storageProvider': StorageProvider.qiniu.name,
+            'objectKey': 'seedance-materials/reference_image/hero.png',
+            'storageBucket': 'qiniu-bucket',
+            'storageDomain': 'https://cdn.example.com',
+          },
+        ],
+      });
+
+      final qiniu = _FakeQiniuUploadService(
+        result: const StorageUploadResult(
+          fileName: 'unused.png',
+          url: 'https://cdn.example.com/unused.png',
+          kind: AttachmentKind.image,
+          role: AttachmentRole.referenceImage,
+          category: '角色',
+        ),
+        bucketPrivate: true,
+        privateDownloadUrl:
+            'https://cdn.example.com/seedance-materials/reference_image/hero.png?e=1&token=ak:test',
+      );
+      final restoredState = AppState(
+        filePicker: _FakeFilePicker.singleImage(),
+        qiniuUploadService: qiniu,
+        bitifulUploadService: _FakeBitifulS4UploadService(
+          result: const StorageUploadResult(
+            fileName: 'unused.png',
+            url: 'https://s3.bitiful.net/demo/unused.png',
+            kind: AttachmentKind.image,
+            role: AttachmentRole.referenceImage,
+            category: '角色',
+          ),
+        ),
+        storage: storage,
+      );
+
+      await restoredState.loadPersistedState();
+      final attachment = restoredState.library.firstWhere(
+        (item) => item.id == 'qiniu-image',
+      );
+      final previewUrl = await restoredState.resolveAttachmentPreviewUrl(
+        attachment,
+      );
+
+      expect(qiniu.fetchBucketPrivateCallCount, 1);
+      expect(qiniu.privateDownloadUrlCallCount, 1);
+      expect(
+        previewUrl,
+        'https://cdn.example.com/seedance-materials/reference_image/hero.png?e=1&token=ak:test',
+      );
+    },
+  );
 }
 
 class _FakeFilePicker extends NativeFilePicker {
@@ -226,10 +304,18 @@ class _FakeFilePicker extends NativeFilePicker {
 }
 
 class _FakeQiniuUploadService extends QiniuUploadService {
-  _FakeQiniuUploadService({required this.result});
+  _FakeQiniuUploadService({
+    required this.result,
+    this.bucketPrivate = false,
+    this.privateDownloadUrl,
+  });
 
   final StorageUploadResult result;
+  final bool bucketPrivate;
+  final String? privateDownloadUrl;
   int uploadCallCount = 0;
+  int fetchBucketPrivateCallCount = 0;
+  int privateDownloadUrlCallCount = 0;
 
   @override
   Future<StorageUploadResult> upload({
@@ -238,6 +324,24 @@ class _FakeQiniuUploadService extends QiniuUploadService {
   }) async {
     uploadCallCount++;
     return result;
+  }
+
+  @override
+  Future<bool> fetchBucketPrivate(SettingsState settings) async {
+    fetchBucketPrivateCallCount++;
+    return bucketPrivate;
+  }
+
+  @override
+  String createPrivateDownloadUrl({
+    required SettingsState settings,
+    required String objectKey,
+    required Duration expiresIn,
+    String? domain,
+  }) {
+    privateDownloadUrlCallCount++;
+    return privateDownloadUrl ??
+        '${domain ?? settings.qiniuDomain}/$objectKey?e=1&token=test';
   }
 }
 

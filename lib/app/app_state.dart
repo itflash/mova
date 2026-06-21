@@ -39,6 +39,8 @@ class AppState extends ChangeNotifier {
   final Set<String> _refreshingTaskIds = {};
   final Set<String> _transferringImageTaskIds = {};
   final Map<String, _SignedUrlCacheEntry> _signedUrlCache = {};
+  final Map<String, bool> _qiniuBucketPrivateByBucket = {};
+  final Map<String, Future<bool?>> _qiniuBucketPrivateRefreshes = {};
   int _compositionClipSequence = 0;
 
   AppState({
@@ -977,7 +979,8 @@ class AppState extends ChangeNotifier {
         settings.storageProvider == StorageProvider.qiniu &&
         settings.qiniuBucket.isNotEmpty) {
       // 切换 bucket 后旧的私有属性失效，清空签名缓存并重置，由 fetchDomainList 重新查询。
-      qiniuBucketPrivate = null;
+      qiniuBucketPrivate =
+          _qiniuBucketPrivateByBucket[settings.qiniuBucket.trim()];
       _signedUrlCache.removeWhere((key, _) => key.startsWith('qiniu:'));
       fetchDomainList();
     }
@@ -3217,12 +3220,43 @@ class AppState extends ChangeNotifier {
   /// 查询当前 bucket 的私有属性并缓存到 qiniuBucketPrivate。
   /// 查询失败不阻断流程，置 null 表示未知，预览时按公开空间处理。
   Future<void> _refreshQiniuBucketPrivate() async {
+    qiniuBucketPrivate = await _ensureQiniuBucketPrivate(settings.qiniuBucket);
+  }
+
+  Future<bool?> _ensureQiniuBucketPrivate(String? bucket) {
+    final normalizedBucket = bucket?.trim() ?? '';
+    if (normalizedBucket.isEmpty ||
+        settings.qiniuAccessKey.trim().isEmpty ||
+        settings.qiniuSecretKey.trim().isEmpty) {
+      return Future.value(null);
+    }
+    final cached = _qiniuBucketPrivateByBucket[normalizedBucket];
+    if (cached != null) return Future.value(cached);
+    final existing = _qiniuBucketPrivateRefreshes[normalizedBucket];
+    if (existing != null) return existing;
+    final future = _fetchQiniuBucketPrivate(normalizedBucket);
+    _qiniuBucketPrivateRefreshes[normalizedBucket] = future;
+    return future.whenComplete(
+      () => _qiniuBucketPrivateRefreshes.remove(normalizedBucket),
+    );
+  }
+
+  Future<bool?> _fetchQiniuBucketPrivate(String bucket) async {
     try {
-      qiniuBucketPrivate = await _qiniuUploadService.fetchBucketPrivate(
-        settings,
+      final isPrivate = await _qiniuUploadService.fetchBucketPrivate(
+        settings.copyWith(qiniuBucket: bucket),
       );
+      _qiniuBucketPrivateByBucket[bucket] = isPrivate;
+      if (bucket == settings.qiniuBucket.trim()) {
+        qiniuBucketPrivate = isPrivate;
+      }
+      notifyListeners();
+      return isPrivate;
     } on Exception {
-      qiniuBucketPrivate = null;
+      if (bucket == settings.qiniuBucket.trim()) {
+        qiniuBucketPrivate = null;
+      }
+      return null;
     }
   }
 
@@ -3543,6 +3577,8 @@ class AppState extends ChangeNotifier {
       'tasks': tasks.map(_taskToJson).toList(),
       'bucketOptions': bucketOptions,
       'domainOptions': domainOptions,
+      'qiniuBucketPrivateByBucket': _qiniuBucketPrivateByBucket,
+      'qiniuBucketPrivate': qiniuBucketPrivate,
       'activeTaskTab': activeTaskTab.name,
       'showArchivedTasks': showArchivedTasks,
       'compositionProject': _compositionProjectToJson(compositionProject),
@@ -3619,6 +3655,14 @@ class AppState extends ChangeNotifier {
     domainOptions
       ..clear()
       ..addAll(_stringListFromJson(map['domainOptions']));
+    _qiniuBucketPrivateByBucket
+      ..clear()
+      ..addAll(_boolMapFromJson(map['qiniuBucketPrivateByBucket']));
+    qiniuBucketPrivate = _nullableBoolValue(map['qiniuBucketPrivate']);
+    if (qiniuBucketPrivate != null && settings.qiniuBucket.trim().isNotEmpty) {
+      _qiniuBucketPrivateByBucket[settings.qiniuBucket.trim()] =
+          qiniuBucketPrivate!;
+    }
     activeTaskTab = _enumValue(
       TaskTab.values,
       map['activeTaskTab'],
@@ -3830,8 +3874,12 @@ class AppState extends ChangeNotifier {
         return attachment.url;
       }
       final normalizedDomain = normalizePublicUrlBase(resolvedDomain);
+      final bucket = attachment.storageBucket?.trim().isNotEmpty == true
+          ? attachment.storageBucket!.trim()
+          : settings.qiniuBucket.trim();
+      final isPrivate = await _ensureQiniuBucketPrivate(bucket);
       // 公开空间直接拼域名 + key；私有空间需要带签名 token 才能访问。
-      if (qiniuBucketPrivate != true) {
+      if (isPrivate != true) {
         return '$normalizedDomain/${encodeObjectKeyForUrl(objectKey)}';
       }
       final cacheKey = 'qiniu:${purpose.name}:${attachment.id}:$objectKey';
@@ -4514,6 +4562,19 @@ class AppState extends ChangeNotifier {
 
   bool _boolValue(Object? value, bool fallback) =>
       value is bool ? value : fallback;
+
+  bool? _nullableBoolValue(Object? value) => value is bool ? value : null;
+
+  Map<String, bool> _boolMapFromJson(Object? value) {
+    if (value is! Map) return {};
+    final result = <String, bool>{};
+    value.forEach((key, mapValue) {
+      if (key is String && key.trim().isNotEmpty && mapValue is bool) {
+        result[key] = mapValue;
+      }
+    });
+    return result;
+  }
 
   T _enumValue<T extends Enum>(List<T> values, Object? value, T fallback) {
     if (value is! String) return fallback;
