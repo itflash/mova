@@ -51,26 +51,7 @@ class CompositionPage extends StatelessWidget {
                   ],
                 ],
                 const SizedBox(height: 14),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    Tooltip(
-                      message: '添加本地视频',
-                      child: FilledButton.icon(
-                        onPressed: state.pickAndAddLocalCompositionVideo,
-                        icon: const Icon(Icons.add_rounded, size: 18),
-                        label: const Text('添加视频片段'),
-                      ),
-                    ),
-                    FilledButton.tonalIcon(
-                      onPressed: () =>
-                          _pickAndAddAttachmentVideo(context, state),
-                      icon: const Icon(Icons.video_library_rounded, size: 18),
-                      label: const Text('素材库视频'),
-                    ),
-                  ],
-                ),
+                _AddClipButtons(state: state),
               ],
             ),
           ),
@@ -947,6 +928,68 @@ class _TrimTimeline extends StatelessWidget {
               },
             ),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AddClipButtons extends StatefulWidget {
+  const _AddClipButtons({required this.state});
+
+  final AppState state;
+
+  @override
+  State<_AddClipButtons> createState() => _AddClipButtonsState();
+}
+
+class _AddClipButtonsState extends State<_AddClipButtons> {
+  bool _busy = false;
+
+  Future<void> _addLocal() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await widget.state.pickAndAddLocalCompositionVideo();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _addFromLibrary() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _pickAndAddAttachmentVideo(context, widget.state);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        Tooltip(
+          message: '添加本地视频',
+          child: FilledButton.icon(
+            onPressed: _busy ? null : _addLocal,
+            icon: _busy
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.add_rounded, size: 18),
+            label: const Text('添加视频片段'),
+          ),
+        ),
+        FilledButton.tonalIcon(
+         onPressed: _busy ? null : _addFromLibrary,
+         icon: const Icon(Icons.video_library_rounded, size: 18),
+          label: const Text('素材库视频'),
         ),
       ],
     );
