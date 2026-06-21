@@ -380,77 +380,74 @@ class FloatingSubmitBar extends StatelessWidget {
 
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 220),
-      child: Opacity(
-        opacity: enabled ? 1.0 : 0.45,
-        child: Material(
-          color: colorScheme.surface,
-          elevation: enabled ? 2 : 0,
-          shadowColor: Colors.black.withValues(alpha: 0.10),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.card),
-            side: BorderSide(
-              color: enabled
-                  ? colorScheme.primary.withValues(alpha: 0.22)
-                  : colorScheme.outlineVariant.withValues(alpha: 0.45),
-            ),
+      child: Material(
+        color: colorScheme.surface,
+        elevation: 2,
+        shadowColor: Colors.black.withValues(alpha: 0.10),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          side: BorderSide(
+            color: enabled
+                ? colorScheme.primary.withValues(alpha: 0.22)
+                : colorScheme.outlineVariant.withValues(alpha: 0.68),
           ),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(AppRadius.control),
-            onTap: onPressed,
-            child: SizedBox(
-              height: 44,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.bolt_rounded, size: 16, color: foreground),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          onTap: onPressed,
+          child: SizedBox(
+            height: 44,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.bolt_rounded, size: 16, color: foreground),
+                  const SizedBox(width: 5),
+                  Text(
+                    creditLabel,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: foreground,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Container(
+                    width: 1,
+                    height: 18,
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.82),
+                  ),
+                  const SizedBox(width: 10),
+                  if (submitting) ...[
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(foreground),
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                  ] else ...[
+                    Icon(
+                      Icons.arrow_upward_rounded,
+                      size: 16,
+                      color: foreground,
+                    ),
                     const SizedBox(width: 5),
-                    Text(
-                      creditLabel,
+                  ],
+                  Flexible(
+                    child: Text(
+                      submitting ? '提交中' : label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(
                         color: foreground,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Container(
-                      width: 1,
-                      height: 18,
-                      color: colorScheme.outlineVariant.withValues(alpha: 0.82),
-                    ),
-                    const SizedBox(width: 10),
-                    if (submitting) ...[
-                      SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(foreground),
-                        ),
-                      ),
-                      const SizedBox(width: 7),
-                    ] else ...[
-                      Icon(
-                        Icons.arrow_upward_rounded,
-                        size: 16,
-                        color: foreground,
-                      ),
-                      const SizedBox(width: 5),
-                    ],
-                    Flexible(
-                      child: Text(
-                        submitting ? '提交中' : label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: foreground,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
