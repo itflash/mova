@@ -178,67 +178,87 @@ class CompositionPage extends StatelessWidget {
                     tone: InlineAlertTone.success,
                   ),
                   const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _NeutralActionButton(
-                        onPressed: () async {
-                          final saved = await state
-                              .saveCompositionExportToGallery();
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context)
-                            ..hideCurrentSnackBar()
-                            ..showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  saved == null ? '保存失败' : '已保存到系统相册',
-                                ),
-                              ),
-                            );
-                        },
-                        icon: const Icon(Icons.save_alt_rounded),
-                        label: '保存到相册/文件',
-                      ),
-                      _NeutralActionButton(
-                        onPressed: () async {
-                          try {
-                            final attachmentId = await state
-                                .importCompositionExportToLibrary();
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context)
-                              ..hideCurrentSnackBar()
-                              ..showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    attachmentId == null ? '导入失败' : '已导入素材库',
-                                  ),
-                                ),
-                              );
-                          } on Exception catch (error) {
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context)
-                              ..hideCurrentSnackBar()
-                              ..showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    state.cleanErrorForDisplay(error),
-                                  ),
-                                ),
-                              );
-                          }
-                        },
-                        icon: const Icon(Icons.photo_library_rounded),
-                        label: '导入素材库',
-                      ),
-                    ],
-                  ),
+                  _ExportActionButtons(state: state),
                 ],
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ExportActionButtons extends StatefulWidget {
+  const _ExportActionButtons({required this.state});
+
+  final AppState state;
+
+  @override
+  State<_ExportActionButtons> createState() => _ExportActionButtonsState();
+}
+
+class _ExportActionButtonsState extends State<_ExportActionButtons> {
+  bool _busy = false;
+
+  Future<void> _saveToGallery() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final saved = await widget.state.saveCompositionExportToGallery();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(saved == null ? '保存失败' : '已保存到系统相册')),
+        );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _importToLibrary() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final attachmentId = await widget.state.importCompositionExportToLibrary();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(attachmentId == null ? '导入失败' : '已导入素材库')),
+        );
+    } on Exception catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(widget.state.cleanErrorForDisplay(error))));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _NeutralActionButton(
+          onPressed: _busy ? null : _saveToGallery,
+          icon: _busy
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.save_alt_rounded),
+          label: '保存到相册/文件',
+        ),
+        _NeutralActionButton(
+          onPressed: _busy ? null : _importToLibrary,
+          icon: _busy
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.photo_library_rounded),
+          label: '导入素材库',
+        ),
+      ],
     );
   }
 }
