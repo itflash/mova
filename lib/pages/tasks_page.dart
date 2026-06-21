@@ -96,26 +96,46 @@ class TasksPage extends StatelessWidget {
     await copyToClipboard(context, text: value, message: '已复制$label');
   }
 
-  Future<void> _openMedia(BuildContext context, TaskRecord task) async {
-    final uri = task.localResourceUri ?? task.videoUrl;
-    if (uri == null || uri.trim().isEmpty) {
-      _showToast(context, '当前没有可打开的媒体');
-      return;
+ Future<void> _openMedia(BuildContext context, TaskRecord task) async {
+   final uri = task.localResourceUri ?? task.videoUrl;
+   if (uri == null || uri.trim().isEmpty) {
+     _showToast(context, '当前没有可打开的媒体');
+     return;
+   }
+
+    final effectiveUri = _resolvePlayableUri(uri, task.videoUrl);
+   if (effectiveUri == null || effectiveUri.trim().isEmpty) {
+     _showToast(context, '当前没有可打开的媒体');
+     return;
+   }
+
+   await showModalBottomSheet<void>(
+     context: context,
+     isScrollControlled: true,
+     useSafeArea: true,
+     showDragHandle: true,
+     backgroundColor: Theme.of(context).colorScheme.surface,
+     shape: const RoundedRectangleBorder(
+       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+     ),
+    builder: (context) => _TaskVideoPreviewSheet(
+       url: effectiveUri,
+      label: task.localFileName ?? task.videoUrl ?? '视频结果',
+    ),
+  );
+}
+
+ String? _resolvePlayableUri(String? localUri, String? videoUrl) {
+    if (localUri == null || localUri.trim().isEmpty) return videoUrl;
+    final trimmed = localUri.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
     }
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (context) => _TaskVideoPreviewSheet(
-        url: uri,
-        label: task.localFileName ?? task.videoUrl ?? '视频结果',
-      ),
-    );
+    final path = trimmed.startsWith('file://')
+        ? Uri.tryParse(trimmed)?.path ?? trimmed
+        : trimmed;
+    if (File(path).existsSync()) return trimmed;
+    return videoUrl;
   }
 
   Future<void> _confirmRetry(
@@ -667,7 +687,7 @@ class _ResultPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final helper = const TasksPage();
-    final mediaUrl = task.localResourceUri ?? task.videoUrl;
+    final mediaUrl = TasksPage()._resolvePlayableUri(task.localResourceUri, task.videoUrl) ?? task.videoUrl;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

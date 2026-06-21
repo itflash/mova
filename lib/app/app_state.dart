@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'composition_models.dart';
 import 'mock_data.dart';
@@ -2192,20 +2193,35 @@ class AppState extends ChangeNotifier {
         await sink.close();
       }
 
-      final saved = await _mediaChannel.invokeMapMethod<String, Object?>(
-        'saveVideoToGallery',
-        {'sourcePath': tempFile.path, 'fileName': fileName},
-      );
-      final savedPath = saved?['path'] as String?;
-      final savedUri = saved?['uri'] as String?;
+      // Save to gallery (best effort) for user convenience
+      try {
+        await _mediaChannel.invokeMapMethod<String, Object?>(
+          'saveVideoToGallery',
+          {'sourcePath': tempFile.path, 'fileName': fileName},
+        );
+      } catch (_) {
+        // Gallery save is best-effort; persistence below is what matters for replay.
+      }
+
+      // Copy to persistent app storage so the video survives app restarts.
+      final appSupportDir = await getApplicationSupportDirectory();
+      final taskVideoDir = Directory('${appSupportDir.path}/task-videos');
+      if (!taskVideoDir.existsSync()) {
+        taskVideoDir.createSync(recursive: true);
+      }
+      final persistentFile = File('${taskVideoDir.path}/$fileName');
+      if (persistentFile.existsSync()) {
+        persistentFile.deleteSync();
+      }
+      await tempFile.copy(persistentFile.path);
 
       final latestIndex = tasks.indexWhere((item) => item.id == taskId);
       if (latestIndex == -1) return false;
       tasks[latestIndex] = tasks[latestIndex].copyWith(
         downloadStatus: DownloadStatus.success,
         downloadProgress: 100,
-        localFileName: savedPath ?? tempFile.path,
-        localResourceUri: savedUri ?? savedPath ?? tempFile.path,
+        localFileName: fileName,
+        localResourceUri: persistentFile.path,
         updatedAt: DateTime.now(),
         hasAnomaly: false,
         clearAnomalyMessage: true,
