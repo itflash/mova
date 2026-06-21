@@ -142,3 +142,59 @@ ANDROID_KEY_PASSWORD
 - Default to the `mova` repo for all active work
 - Do not package from `if-movia` unless the user explicitly asks
 - Re-check environment on every new chat, even if these notes seem up to date
+
+## iOS Device Launch & Install
+
+iPad/iPhone 连接后，先确认设备被识别：
+
+```bash
+<FLUTTER_BIN> devices
+```
+
+### Debug 模式（开发调试，需要 flutter tooling 连着）
+
+```bash
+<FLUTTER_BIN> run -d <device-id>
+```
+
+- iOS 14+ 的 debug 包是 JIT 模式，必须从 flutter tooling 启动，不能在 Xcode 里直接 Run，也不能从主屏图标点开
+- 首次冷启动可能白屏（Flutter 3.44 implicit engine + scene-based 配置在部分设备上首次 attach 较慢），按 `R` 热重启即可恢复
+- `r` 热重载，`R` 热重启，`d` detach（app 留在设备上运行），`q` 退出
+
+### Release 模式（独立运行，iPad 上点图标就能开）
+
+构建：
+
+```bash
+<FLUTTER_BIN> build ios --release
+```
+
+手动安装到设备（不走 flutter run 的 install 管道，避免 devicectl hang）：
+
+```bash
+xcrun devicectl device install app --device <device-id> build/ios/iphoneos/Runner.app
+```
+
+装完直接在 iPad 主屏点图标启动，不依赖电脑连接。
+
+### Profile 模式（接近 release 性能，保留调试能力）
+
+```bash
+<FLUTTER_BIN> run --profile -d <device-id>
+```
+
+### 常见问题
+
+- **设备未配对**：Xcode → Window → Devices and Simulators，选设备，iPad 上点「信任」并输配对码
+- **No development certificates**：Xcode → Runner target → Signing & Capabilities，Team 选个人免费团队，勾 Automatically manage signing，⌘R 跑一次让 Xcode 自动注册设备
+- **Podfile.lock not in sync**：`cd ios && pod install`
+- **devicectl install hang**：杀掉残留的 `devicectl` 进程后单独执行安装命令
+- 当前 iPad UDID：`00008020-00041CAC11F9002E`（iPad mini 5, iOS 26.5）
+- 签名团队 ID：`TJCWGB5D2K`（个人免费团队，Apple ID: 609086479@qq.com）
+
+### iOS 签名注意事项
+
+- 免费个人团队即可安装到自己设备，不需要付费 Apple Developer Program
+- 免费账号每 7 天签名过期，过期后需重新 build+install
+- 免费账号同时在 `developer.apple.com/account` 没有 Devices 注册入口，设备注册由 Xcode 首次运行自动完成
+- 首次安装后在 iPad 上：设置 → 通用 → VPN与设备管理 → 信任开发者证书
