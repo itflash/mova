@@ -297,6 +297,7 @@ class Attachment {
     required this.createdAt,
     required this.status,
     required this.url,
+    this.uploadProgress,
     this.localStatus = AttachmentLocalStatus.none,
     this.localDownloadProgress = 0,
     this.localResourceUri,
@@ -322,6 +323,7 @@ class Attachment {
   final DateTime createdAt;
   final AttachmentStatus status;
   final String url;
+  final int? uploadProgress;
   final AttachmentLocalStatus localStatus;
   final int localDownloadProgress;
   final String? localResourceUri;
@@ -349,6 +351,7 @@ class Attachment {
     DateTime? createdAt,
     AttachmentStatus? status,
     String? url,
+    int? uploadProgress,
     AttachmentLocalStatus? localStatus,
     int? localDownloadProgress,
     String? localResourceUri,
@@ -380,6 +383,7 @@ class Attachment {
       createdAt: createdAt ?? this.createdAt,
       status: status ?? this.status,
       url: url ?? this.url,
+      uploadProgress: uploadProgress ?? this.uploadProgress,
       localStatus: localStatus ?? this.localStatus,
       localDownloadProgress:
           localDownloadProgress ?? this.localDownloadProgress,

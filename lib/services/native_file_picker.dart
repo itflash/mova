@@ -34,17 +34,23 @@ class PickedNativeFile {
     required this.name,
     required this.mimeType,
     required this.bytes,
+    this.uri,
+    this.path,
   });
 
   final String name;
   final String mimeType;
   final Uint8List bytes;
+  final String? uri;
+  final String? path;
 
   factory PickedNativeFile.fromPlatformMap(Map<Object?, Object?> value) {
     return PickedNativeFile(
       name: value['name'] as String? ?? 'asset',
       mimeType: value['mimeType'] as String? ?? 'application/octet-stream',
       bytes: value['bytes'] as Uint8List? ?? Uint8List(0),
+      uri: value['uri'] as String?,
+      path: value['path'] as String?,
     );
   }
 

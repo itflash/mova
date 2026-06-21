@@ -3033,19 +3033,33 @@ class AppState extends ChangeNotifier {
           createdAt: now,
           status: AttachmentStatus.uploading,
           url: '',
+          storageProvider: settings.storageProvider,
         ),
       );
       notifyListeners();
+
+      void updateUploadProgress(int progress) {
+        final latestIndex = library.indexWhere((item) => item.id == id);
+        if (latestIndex == -1) return;
+        final clamped = progress.clamp(0, 100).toInt();
+        if (library[latestIndex].uploadProgress == clamped) return;
+        library[latestIndex] = library[latestIndex].copyWith(
+          uploadProgress: clamped,
+        );
+        notifyListeners();
+      }
 
       try {
         final result = await switch (settings.storageProvider) {
           StorageProvider.qiniu => _qiniuUploadService.upload(
             settings: settings,
             file: file,
+            onProgress: updateUploadProgress,
           ),
           StorageProvider.bitifulS4 => _bitifulUploadService.upload(
             settings: settings,
             file: file,
+            onProgress: updateUploadProgress,
           ),
         };
         final latestIndex = library.indexWhere((item) => item.id == id);
@@ -3058,6 +3072,7 @@ class AppState extends ChangeNotifier {
             category: result.category,
             status: AttachmentStatus.uploaded,
             url: result.url,
+            uploadProgress: 100,
             storageProvider: settings.storageProvider,
             objectKey: result.objectKey,
             storageBucket: result.storageBucket,
@@ -3953,6 +3968,7 @@ class AppState extends ChangeNotifier {
     'createdAt': value.createdAt.toIso8601String(),
     'status': value.status.name,
     'url': value.url,
+    'uploadProgress': value.uploadProgress,
     'localStatus': value.localStatus.name,
     'localDownloadProgress': value.localDownloadProgress,
     'localResourceUri': value.localResourceUri,
@@ -4010,6 +4026,9 @@ class AppState extends ChangeNotifier {
         AttachmentStatus.uploaded,
       ),
       url: _stringValue(map['url'], ''),
+      uploadProgress: map['uploadProgress'] is num
+          ? (map['uploadProgress'] as num).round().clamp(0, 100).toInt()
+          : null,
       localStatus: _enumValue(
         AttachmentLocalStatus.values,
         map['localStatus'],

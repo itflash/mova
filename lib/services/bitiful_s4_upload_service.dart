@@ -23,6 +23,7 @@ class BitifulS4UploadService {
   Future<StorageUploadResult> upload({
     required SettingsState settings,
     required PickedNativeFile file,
+    void Function(int progress)? onProgress,
   }) async {
     final config = _BitifulConfig.fromSettings(settings);
     final inferred = inferStorageUploadFileInfo(file);
@@ -34,7 +35,7 @@ class BitifulS4UploadService {
       payload: file.bytes,
       contentType: file.mimeType,
     );
-    final response = await _sendRequest(request);
+    final response = await _sendRequest(request, onProgress: onProgress);
     final etag = response.headers
         .value(HttpHeaders.etagHeader)
         ?.replaceAll('"', '');
@@ -245,7 +246,10 @@ class BitifulS4UploadService {
     );
   }
 
-  Future<HttpClientResponse> _sendRequest(_SignedRequest request) async {
+  Future<HttpClientResponse> _sendRequest(
+    _SignedRequest request, {
+    void Function(int progress)? onProgress,
+  }) async {
     // 调用方会读取响应头/响应体，此处不在返回前 close client，否则会中断
     // 响应流的消费；HttpClient 实例失去引用后由 GC 回收，连接在响应被
     // 完整消费后会回到连接池。如需更严格的资源管理，应重构为调用方持有 client。
@@ -253,7 +257,12 @@ class BitifulS4UploadService {
     final httpRequest = await client.openUrl(request.method, request.uri);
     request.headers.forEach(httpRequest.headers.set);
     if (request.payload.isNotEmpty) {
-      httpRequest.add(request.payload);
+      httpRequest.contentLength = request.payload.length;
+      await _writeRequestPayload(
+        httpRequest,
+        request.payload,
+        onProgress: onProgress,
+      );
     }
     final response = await httpRequest.close();
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -266,6 +275,28 @@ class BitifulS4UploadService {
           : responseText,
       uri: request.uri,
     );
+  }
+
+  Future<void> _writeRequestPayload(
+    HttpClientRequest request,
+    Uint8List payload, {
+    void Function(int progress)? onProgress,
+  }) async {
+    if (payload.isEmpty) return;
+
+    const chunkSize = 64 * 1024;
+    for (var offset = 0; offset < payload.length; offset += chunkSize) {
+      final end = offset + chunkSize < payload.length
+          ? offset + chunkSize
+          : payload.length;
+      request.add(Uint8List.sublistView(payload, offset, end));
+      if (onProgress != null) {
+        onProgress(
+          ((end / payload.length) * 100).round().clamp(0, 100).toInt(),
+        );
+      }
+      await request.flush();
+    }
   }
 
   String _publicBaseUrl(_BitifulConfig config) {

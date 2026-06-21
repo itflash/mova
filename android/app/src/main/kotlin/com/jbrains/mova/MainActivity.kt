@@ -440,10 +440,14 @@ class MainActivity : FlutterActivity() {
         }
         try {
             val files = uris.map { uri ->
+                val name = displayName(uri)
+                val localCopy = copyUriToCache(uri, name)
                 mapOf(
-                    "name" to displayName(uri),
+                    "name" to name,
                     "mimeType" to (contentResolver.getType(uri) ?: "application/octet-stream"),
-                    "bytes" to readBytes(uri),
+                    "bytes" to localCopy.readBytes(),
+                    "uri" to Uri.fromFile(localCopy).toString(),
+                    "path" to localCopy.absolutePath,
                 )
             }
             result.success(files)

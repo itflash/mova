@@ -522,11 +522,32 @@ class _CompactAttachmentRow extends StatelessWidget {
                     ),
                   ],
                 ),
+                if (attachment.status == AttachmentStatus.uploading) ...[
+                  const SizedBox(height: 8),
+                  _AttachmentUploadProgress(attachment: attachment),
+                ],
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AttachmentUploadProgress extends StatelessWidget {
+  const _AttachmentUploadProgress({required this.attachment});
+
+  final Attachment attachment;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = attachment.uploadProgress;
+    final confirming = progress != null && progress >= 99;
+    return ProgressRow(
+      label: confirming ? '确认中' : '上传中',
+      value: progress == null || confirming ? null : progress / 100,
+      helper: progress == null || confirming ? null : '$progress%',
     );
   }
 }
@@ -1596,25 +1617,28 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                       style: metaTextStyle,
                     ),
                     const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        if (attachment.status != AttachmentStatus.uploaded)
-                          StatusPill(
-                            label: _statusLabel(attachment.status),
-                            tone: _statusColor(context, attachment.status),
-                          ),
-                        if (attachment.kind == AttachmentKind.video)
-                          StatusPill(
-                            label: _localStatusLabel(attachment),
-                            tone: _localStatusColor(context, attachment),
-                            busy:
-                                attachment.localStatus ==
-                                AttachmentLocalStatus.downloading,
-                          ),
-                      ],
-                    ),
+                    if (attachment.status == AttachmentStatus.uploading)
+                      _AttachmentUploadProgress(attachment: attachment)
+                    else
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          if (attachment.status != AttachmentStatus.uploaded)
+                            StatusPill(
+                              label: _statusLabel(attachment.status),
+                              tone: _statusColor(context, attachment.status),
+                            ),
+                          if (attachment.kind == AttachmentKind.video)
+                            StatusPill(
+                              label: _localStatusLabel(attachment),
+                              tone: _localStatusColor(context, attachment),
+                              busy:
+                                  attachment.localStatus ==
+                                  AttachmentLocalStatus.downloading,
+                            ),
+                        ],
+                      ),
                   ],
                 ),
               ),

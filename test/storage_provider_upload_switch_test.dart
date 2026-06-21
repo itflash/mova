@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -59,6 +60,7 @@ void main() {
       (item) => item.fileName == 'hero.png',
     );
     expect(attachment.status, AttachmentStatus.uploaded);
+    expect(attachment.uploadProgress, 100);
     expect(attachment.storageProvider, StorageProvider.qiniu);
     expect(attachment.storageBucket, 'qiniu-bucket');
     expect(attachment.objectKey, 'seedance-materials/reference_image/hero.png');
@@ -115,6 +117,7 @@ void main() {
       (item) => item.fileName == 'scene.mp4',
     );
     expect(attachment.status, AttachmentStatus.uploaded);
+    expect(attachment.uploadProgress, 100);
     expect(attachment.kind, AttachmentKind.video);
     expect(attachment.role, AttachmentRole.referenceVideo);
     expect(attachment.storageProvider, StorageProvider.bitifulS4);
@@ -125,6 +128,58 @@ void main() {
       attachment.objectKey,
       'seedance-materials/reference_video/scene.mp4',
     );
+  });
+
+  test('uploading placeholder uses selected bitiful provider', () async {
+    final bitifulResult = const StorageUploadResult(
+      fileName: 'scene.mp4',
+      url: 'https://s3.bitiful.net/demo/scene.mp4',
+      kind: AttachmentKind.video,
+      role: AttachmentRole.referenceVideo,
+      category: '分镜',
+      objectKey: 'seedance-materials/reference_video/scene.mp4',
+      storageBucket: 'bitiful-bucket',
+      storageEndpoint: 'https://s3.bitiful.net',
+      storageRegion: 'cn-east-1',
+    );
+    final uploadCompleter = Completer<StorageUploadResult>();
+    final state = AppState(
+      filePicker: _FakeFilePicker.singleVideo(),
+      qiniuUploadService: _FakeQiniuUploadService(
+        result: const StorageUploadResult(
+          fileName: 'unused.mp4',
+          url: 'https://cdn.example.com/unused.mp4',
+          kind: AttachmentKind.video,
+          role: AttachmentRole.referenceVideo,
+          category: '分镜',
+        ),
+      ),
+      bitifulUploadService: _FakeBitifulS4UploadService(
+        result: bitifulResult,
+        uploadCompleter: uploadCompleter,
+      ),
+      storage: _MemoryAppStorage(),
+    );
+    state.updateSettings(
+      (current) => current.copyWith(
+        storageProvider: StorageProvider.bitifulS4,
+        bitifulAccessKey: 'ak',
+        bitifulSecretKey: 'sk',
+        bitifulBucket: 'bitiful-bucket',
+        bitifulEndpoint: settingsDefaults.bitifulEndpoint,
+        bitifulRegion: settingsDefaults.bitifulRegion,
+      ),
+    );
+
+    final uploadFuture = state.pickAndUploadFiles();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(state.library, isNotEmpty);
+    expect(state.library.first.status, AttachmentStatus.uploading);
+    expect(state.library.first.storageProvider, StorageProvider.bitifulS4);
+
+    uploadCompleter.complete(bitifulResult);
+    expect(await uploadFuture, 1);
   });
 
   test('request preview uses signed bitiful url for private attachments', () async {
@@ -321,8 +376,10 @@ class _FakeQiniuUploadService extends QiniuUploadService {
   Future<StorageUploadResult> upload({
     required SettingsState settings,
     required PickedNativeFile file,
+    void Function(int progress)? onProgress,
   }) async {
     uploadCallCount++;
+    onProgress?.call(42);
     return result;
   }
 
@@ -346,10 +403,15 @@ class _FakeQiniuUploadService extends QiniuUploadService {
 }
 
 class _FakeBitifulS4UploadService extends BitifulS4UploadService {
-  _FakeBitifulS4UploadService({required this.result, this.signedGetUrl});
+  _FakeBitifulS4UploadService({
+    required this.result,
+    this.signedGetUrl,
+    this.uploadCompleter,
+  });
 
   final StorageUploadResult result;
   final String? signedGetUrl;
+  final Completer<StorageUploadResult>? uploadCompleter;
   int uploadCallCount = 0;
   int signedGetUrlCallCount = 0;
 
@@ -357,8 +419,14 @@ class _FakeBitifulS4UploadService extends BitifulS4UploadService {
   Future<StorageUploadResult> upload({
     required SettingsState settings,
     required PickedNativeFile file,
+    void Function(int progress)? onProgress,
   }) async {
     uploadCallCount++;
+    onProgress?.call(64);
+    final completer = uploadCompleter;
+    if (completer != null) {
+      return completer.future;
+    }
     return result;
   }
 
