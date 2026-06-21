@@ -10,12 +10,14 @@ import '../app/spacing.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:video_player/video_player.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 
 import '../app/app_scope.dart';
 import '../app/app_state.dart';
 import '../app/models.dart';
+import '../services/preview_cache_service.dart';
 
 Future<void> showAttachmentPreviewSheet(
   BuildContext context,
@@ -457,7 +459,12 @@ class _ResolvedAttachmentPhotoView extends StatelessWidget {
           );
         }
         return PhotoView(
-          imageProvider: NetworkImage(url),
+          imageProvider: CachedNetworkImageProvider(
+            url,
+            cacheKey: previewCacheKey(attachment),
+          ),
+          // 使用稳定 cacheKey 避免七牛签名 URL 刷新后缓存失效。
+          // CachedNetworkImageProvider 自带磁盘缓存，签名变化仍命中同一份图片。
           controller: controller,
           backgroundDecoration: const BoxDecoration(color: Colors.black),
           minScale: PhotoViewComputedScale.contained,
@@ -512,6 +519,10 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
   bool _loading = true;
   bool _initialized = false;
 
+  /// 兜底下载状态，用于在 UI 上展示「正在准备预览 / 正在下载 N% / 预览准备失败」。
+  _PreviewFallbackStatus _fallbackStatus = _PreviewFallbackStatus.idle;
+  int _downloadProgress = 0;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -534,6 +545,9 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
       await _initializeController(_createAttachmentVideoController(url));
     } catch (_) {
       await _disposeControllers();
+      if (mounted) {
+        setState(() => _fallbackStatus = _PreviewFallbackStatus.preparing);
+      }
       await _initializeDownloadedFallback(state, url);
     }
     if (!mounted) return;
@@ -542,17 +556,43 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
     });
   }
 
+  /// 七牛私有视频远程流式播放失败后的兜底：先查本地预览缓存，命中直接播放；
+  /// 未命中才下载签名 URL 到缓存文件，下载过程中展示进度。
+  /// 缓存文件按素材稳定 key 存放，重复点击预览不会重复下载。
   Future<void> _initializeDownloadedFallback(AppState state, String url) async {
     if (!mounted || url.trim().isEmpty) return;
+    final cacheService = PreviewCacheService.instance;
     try {
-      final tempFile = await state.downloadRemoteVideoToTemp(
+      // 先查本地缓存，命中则直接播放，避免重复下载大视频。
+      final cached = await cacheService.videoCacheFile(widget.attachment);
+      if (cached != null) {
+        if (!mounted) return;
+        await _initializeController(VideoPlayerController.file(cached));
+        return;
+      }
+      // 未命中：下载到缓存文件，展示下载进度。
+      if (mounted) {
+        setState(() {
+          _fallbackStatus = _PreviewFallbackStatus.downloading;
+          _downloadProgress = 0;
+        });
+      }
+      final file = await cacheService.downloadToVideoCache(
+        widget.attachment,
         url,
-        _safeVideoPreviewFileName(widget.attachment.fileName),
+        onProgress: (progress) {
+          if (mounted) {
+            setState(() => _downloadProgress = progress);
+          }
+        },
       );
       if (!mounted) return;
-      await _initializeController(VideoPlayerController.file(tempFile));
+      await _initializeController(VideoPlayerController.file(file));
     } catch (_) {
-      // Keep preview fallback non-blocking when temporary authorization fails.
+      // 下载或初始化失败：标记预览准备失败，展示错误占位。
+      if (mounted) {
+        setState(() => _fallbackStatus = _PreviewFallbackStatus.failed);
+      }
     }
   }
 
@@ -599,19 +639,37 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return Container(
-        height: 280,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(AppRadius.card),
-        ),
-        child: const Center(child: CircularProgressIndicator()),
+      return _PreviewStatusBox(
+        icon: Icons.movie_outlined,
+        label: _fallbackStatus == _PreviewFallbackStatus.downloading
+            ? '正在下载 $_downloadProgress%'
+            : _fallbackStatus == _PreviewFallbackStatus.preparing
+                ? '正在准备预览'
+                : _fallbackStatus == _PreviewFallbackStatus.failed
+                    ? '预览准备失败'
+                    : widget.label,
+        progress: _fallbackStatus == _PreviewFallbackStatus.downloading
+            ? _downloadProgress / 100.0
+            : null,
       );
     }
 
     if (_controller == null ||
         !_controller!.value.isInitialized ||
         _chewieController == null) {
+      if (_fallbackStatus == _PreviewFallbackStatus.downloading) {
+        return _PreviewStatusBox(
+          icon: Icons.movie_outlined,
+          label: '正在下载 $_downloadProgress%',
+          progress: _downloadProgress / 100.0,
+        );
+      }
+      if (_fallbackStatus == _PreviewFallbackStatus.failed) {
+        return _PreviewStatusBox(
+          icon: Icons.error_outline_rounded,
+          label: '预览准备失败',
+        );
+      }
       return _PreviewFallback(icon: Icons.movie_outlined, label: widget.label);
     }
 
@@ -1060,15 +1118,6 @@ VideoPlayerController _createAttachmentVideoController(String value) {
   return VideoPlayerController.networkUrl(Uri.parse(value));
 }
 
-String _safeVideoPreviewFileName(String fileName) {
-  final sanitized = fileName
-      .trim()
-      .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')
-      .replaceAll(RegExp(r'_+'), '_');
-  final fallback = sanitized.isEmpty ? 'preview-video.mp4' : sanitized;
-  return '${DateTime.now().microsecondsSinceEpoch}-$fallback';
-}
-
 class _FallbackThumb extends StatelessWidget {
   const _FallbackThumb({required this.icon, required this.label});
 
@@ -1099,6 +1148,82 @@ class _FallbackThumb extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 视频兜底下载的状态，用于 UI 展示准备进度。
+enum _PreviewFallbackStatus {
+  idle,
+  preparing,
+  downloading,
+  failed,
+}
+
+/// 预览状态占位框：展示图标 + 文字，可选进度条（兜底下载时用）。
+/// 高度与 _PreviewFallback 保持一致（280），确保切换状态时布局不跳动。
+class _PreviewStatusBox extends StatelessWidget {
+  const _PreviewStatusBox({
+    required this.icon,
+    required this.label,
+    this.progress,
+  });
+
+  final IconData icon;
+  final String label;
+  final double? progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      height: 280,
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 36, color: colorScheme.onSurfaceVariant),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+          if (progress != null) ...[
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 48),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.control),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 6,
+                  backgroundColor: colorScheme.surfaceContainerHigh,
+                ),
+              ),
+            ),
+          ] else if (_isBusyLabel(label)) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  bool _isBusyLabel(String label) =>
+      label.startsWith('正在准备') || label.startsWith('正在下载');
 }
 
 class _PreviewFallback extends StatelessWidget {
@@ -1139,15 +1264,26 @@ class _PreviewFallback extends StatelessWidget {
 /// 同一视频重复滚动进入列表时直接读已有 jpg，不重复抽帧，避免卡顿。
 /// 抽帧失败（网络异常、格式不支持等）返回 null，调用方降级到 fallback 占位图。
 Future<String?> _cachedVideoThumbnail(String videoUrl) async {
-  final cacheDir = Directory('${Directory.systemTemp.path}/mova-thumbs');
-  if (!cacheDir.existsSync()) {
-    cacheDir.createSync(recursive: true);
+  // 缩略图缓存放 applicationSupportDirectory（稳定目录），
+  // 同时检查 systemTemp 旧目录以兼容历史缓存数据。
+  final stableDir = Directory(
+    '${(await getApplicationSupportDirectory()).path}/mova-thumbs',
+  );
+  if (!stableDir.existsSync()) {
+    stableDir.createSync(recursive: true);
   }
   final hash = md5.convert(utf8.encode(videoUrl)).toString();
-  final thumbPath = '${cacheDir.path}/$hash.jpg';
+  final thumbPath = '${stableDir.path}/$hash.jpg';
   final thumbFile = File(thumbPath);
   if (thumbFile.existsSync() && thumbFile.lengthSync() > 0) {
     return thumbPath;
+  }
+  // 兼容旧目录：systemTemp 下已有缓存直接复用。
+  final legacyPath =
+      '${Directory.systemTemp.path}/mova-thumbs/$hash.jpg';
+  final legacyFile = File(legacyPath);
+  if (legacyFile.existsSync() && legacyFile.lengthSync() > 0) {
+    return legacyPath;
   }
   // -ss 1 seek 到 1 秒（输入前，快进），-frames:v 1 只取一帧，
   // scale=480:-2 缩放到宽 480、高度自动对齐偶数，-q:v 4 控制质量/体积。

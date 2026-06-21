@@ -5,6 +5,7 @@ import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import '../app/app_scope.dart';
 import '../app/models.dart';
 import 'home_shell.dart';
+import '../services/preview_cache_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -19,6 +20,34 @@ class _SettingsPageState extends State<SettingsPage> {
   bool showQiniuSecretKey = false;
   bool showBitifulAccessKey = false;
   bool showBitifulSecretKey = false;
+
+  int? _cacheSizeBytes;
+  bool _isClearingCache = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCacheSize();
+  }
+
+  Future<void> _loadCacheSize() async {
+    final size = await PreviewCacheService.instance.totalCacheSize();
+    if (mounted) {
+      setState(() => _cacheSizeBytes = size);
+    }
+  }
+
+  Future<void> _clearCache() async {
+    setState(() => _isClearingCache = true);
+    try {
+      await PreviewCacheService.instance.clearAll();
+    } finally {
+      if (mounted) {
+        setState(() => _isClearingCache = false);
+        await _loadCacheSize();
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -287,6 +316,29 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 const PanelDivider(),
                 UtilityTile(title: '存储说明', subtitle: '敏感配置会在 Android 端加密后再落库。'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          SectionLabel('缓存'),
+          UtilityPanel(
+            child: Column(
+              children: [
+                UtilityTile(
+                  title: '预览缓存',
+                  subtitle: _cacheSizeBytes == null
+                      ? '正在计算…'
+                      : '图片预览、视频兜底和缩略图缓存，当前占用 ${formatCacheBytes(_cacheSizeBytes!)}。超出 2GB 时自动按最久未访问清理。',
+                  trailing: ToolIconButton(
+                    tooltip: '清理缓存',
+                    icon: _isClearingCache
+                        ? Icons.more_horiz_rounded
+                        : Icons.delete_sweep_outlined,
+                    onPressed: _isClearingCache
+                        ? null
+                        : () => _clearCache(),
+                  ),
+                ),
               ],
             ),
           ),
