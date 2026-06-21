@@ -50,10 +50,13 @@ class _CreatePageState extends State<CreatePage> {
     _syncPrompt(state);
     _syncMetadataControllers(state);
     _handleMentionSheet(context, state);
-    _ensureToolResolution(state);
+   _ensureToolResolution(state);
 
-    final canSubmit = !state.isSubmitting;
-    final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+   final canSubmit =
+       state.isAgentEarthConfigured &&
+       state.validationMessages.isEmpty &&
+       !state.isSubmitting;
+   final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
 
     return AppPageScaffold(
       eyebrow: 'Create',
