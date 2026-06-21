@@ -781,16 +781,40 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<String> _persistCompositionVideo(String sourceUri, String fileName) async {
+    final sourcePath = sourceUri.startsWith('file://')
+        ? Uri.tryParse(sourceUri)?.path ?? sourceUri
+        : sourceUri;
+    final sourceFile = File(sourcePath);
+    if (!sourceFile.existsSync()) return sourceUri;
+    final appSupportDir = await getApplicationSupportDirectory();
+    final compVideoDir = Directory('${appSupportDir.path}/composition-videos');
+    if (!compVideoDir.existsSync()) {
+      compVideoDir.createSync(recursive: true);
+    }
+    final safeName = fileName.isNotEmpty
+        ? fileName
+        : 'comp-${DateTime.now().millisecondsSinceEpoch}.mp4';
+    final dest = File('${compVideoDir.path}/$safeName');
+    if (dest.existsSync()) {
+      dest.deleteSync();
+    }
+    await sourceFile.copy(dest.path);
+    return dest.path;
+  }
+
   Future<void> pickAndAddLocalCompositionVideo() async {
     final picked = await _filePicker.pickSingleVideoFile();
     final uri = picked?.uri.trim() ?? '';
     if (picked == null || uri.isEmpty) return;
 
+    final persistentUri = await _persistCompositionVideo(uri, picked.name);
+
     addCompositionClip(
       CompositionClip.local(
         id: 'clip-${DateTime.now().millisecondsSinceEpoch}',
         label: picked.name,
-        localUri: uri,
+        localUri: persistentUri,
         fileName: picked.name,
         startMs: 0,
         endMs: picked.durationMs ?? 15000,
@@ -805,12 +829,14 @@ class AppState extends ChangeNotifier {
     final uri = picked?.uri.trim() ?? '';
     if (picked == null || uri.isEmpty) return;
 
+    final persistentUri = await _persistCompositionVideo(uri, picked.name);
+
     updateCompositionClip(
       clipId,
       (current) => current.copyWith(
         label: picked.name,
         sourceType: CompositionSourceType.localFile,
-        sourceUri: uri,
+        sourceUri: persistentUri,
         fileName: picked.name,
         startMs: 0,
         endMs: picked.durationMs ?? 15000,

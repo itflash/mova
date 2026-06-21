@@ -216,10 +216,9 @@ import UIKit
   }
 
   private func presentMediaPicker(result: @escaping FlutterResult) {
-    guard documentPickerResult == nil && photoPickerResult == nil && mediaPickerResult == nil else {
-      result(FlutterError(code: "picker_busy", message: "文件选择器正在打开。", details: nil))
-      return
-    }
+    if let stale = documentPickerResult { documentPickerResult = nil; stale(nil) }
+    if let stale = photoPickerResult { photoPickerResult = nil; stale(nil) }
+    if let stale = mediaPickerResult { mediaPickerResult = nil; stale(nil) }
     if #available(iOS 14, *) {
       mediaPickerResult = result
       var configuration = PHPickerConfiguration(photoLibrary: .shared())
@@ -235,10 +234,10 @@ import UIKit
   }
 
   private func presentVideoPicker(result: @escaping FlutterResult) {
-    guard documentPickerResult == nil && photoPickerResult == nil && mediaPickerResult == nil else {
-      result(FlutterError(code: "picker_busy", message: "文件选择器正在打开。", details: nil))
-      return
-    }
+    // Clean up any stale results from previous pickers that may not have fired their delegate.
+    if let stale = documentPickerResult { documentPickerResult = nil; stale(nil) }
+    if let stale = photoPickerResult { photoPickerResult = nil; stale(nil) }
+    if let stale = mediaPickerResult { mediaPickerResult = nil; stale(nil) }
     if #available(iOS 14, *) {
       photoPickerResult = result
       var configuration = PHPickerConfiguration(photoLibrary: .shared())

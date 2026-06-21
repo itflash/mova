@@ -689,7 +689,10 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
 }
 
 class MovaVideoControls extends StatefulWidget {
-  const MovaVideoControls({super.key});
+  const MovaVideoControls({super.key, this.trimStartMs, this.trimEndMs});
+
+  final int? trimStartMs;
+  final int? trimEndMs;
 
   @override
   State<MovaVideoControls> createState() => _MovaVideoControlsState();
@@ -739,13 +742,15 @@ class _MovaVideoControlsState extends State<MovaVideoControls> {
     }
 
     final value = controller.value;
-    final duration = value.duration;
-    final position = value.position > duration ? duration : value.position;
-    final durationMs = duration.inMilliseconds.toDouble().clamp(
-      1,
-      double.infinity,
-    );
-    final positionMs = position.inMilliseconds.toDouble().clamp(0, durationMs);
+    final fullDuration = value.duration;
+    final trimStart = (widget.trimStartMs ?? 0).toDouble();
+    final trimEnd = (widget.trimEndMs != null && widget.trimEndMs! > 0
+        ? widget.trimEndMs!.toDouble()
+        : fullDuration.inMilliseconds.toDouble());
+    final trimDuration = trimEnd - trimStart;
+    final fullPos = value.position > fullDuration ? fullDuration : value.position;
+    final relPos = (fullPos.inMilliseconds.toDouble() - trimStart).clamp(0.0, trimDuration);
+    final durationMs = trimDuration.clamp(1.0, double.infinity);
 
     return Stack(
       children: [
@@ -792,7 +797,7 @@ class _MovaVideoControlsState extends State<MovaVideoControls> {
                     ),
                     const SizedBox(width: 10),
                     Text(
-                      '${_formatDuration(position)} / ${_formatDuration(duration)}',
+                      '${_formatDuration(Duration(milliseconds: relPos.round()))} / ${_formatDuration(Duration(milliseconds: trimDuration.round()))}',
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(
                         color: Colors.white,
                         fontWeight: FontWeight.w700,
@@ -828,11 +833,11 @@ class _MovaVideoControlsState extends State<MovaVideoControls> {
                   ),
                   child: Slider(
                     min: 0,
-                    max: durationMs.toDouble(),
-                    value: positionMs.toDouble(),
+                    max: durationMs,
+                    value: relPos,
                     onChanged: (nextValue) {
                       controller.seekTo(
-                        Duration(milliseconds: nextValue.round()),
+                        Duration(milliseconds: (trimStart + nextValue).round()),
                       );
                     },
                   ),
