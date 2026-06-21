@@ -161,6 +161,13 @@ import UIKit
     rootViewController?.present(picker, animated: true)
   }
 
+
+  private func videoDurationMs(_ url: URL) -> Int {
+    let asset = AVURLAsset(url: url)
+    let duration = CMTimeGetSeconds(asset.duration)
+    return duration > 0 ? Int(duration * 1000) : 0
+  }
+
   private func saveImageToGallery(sourcePath: String?, fileName: String?, result: @escaping FlutterResult) {
     guard let sourcePath, !sourcePath.isEmpty else {
       result(FlutterError(code: "save_failed", message: "缺少图片路径。", details: nil))
@@ -455,12 +462,14 @@ extension AppDelegate: PHPickerViewControllerDelegate {
             try FileManager.default.removeItem(at: target)
           }
           try FileManager.default.copyItem(at: url, to: target)
+          let durationMs = self.videoDurationMs(target)
           DispatchQueue.main.async {
             result?([
               "name": target.lastPathComponent,
               "mimeType": "video/mp4",
               "uri": target.absoluteString,
               "path": target.path,
+              "durationMs": durationMs,
             ])
           }
         } catch {
