@@ -14,6 +14,7 @@ import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 
 import '../app/app_scope.dart';
+import '../app/app_state.dart';
 import '../app/models.dart';
 
 Future<void> showAttachmentPreviewSheet(
@@ -520,45 +521,72 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
   }
 
   Future<void> _initialize() async {
+    final state = AppScope.of(context);
+    var url = '';
     try {
-      final url = await AppScope.of(
-        context,
-      ).resolveAttachmentPreviewUrl(widget.attachment);
+      url = await state.resolveAttachmentPreviewUrl(widget.attachment);
       if (!mounted || url.trim().isEmpty) {
         setState(() {
           _loading = false;
         });
         return;
       }
-      _controller = _createAttachmentVideoController(url);
-      await _controller!.initialize();
-      if (!mounted) return;
-      final primaryColor = Theme.of(context).colorScheme.primary;
-      _chewieController = ChewieController(
-        videoPlayerController: _controller!,
-        aspectRatio: _controller!.value.aspectRatio == 0
-            ? 16 / 9
-            : _controller!.value.aspectRatio,
-        autoPlay: false,
-        looping: false,
-        showOptions: false,
-        allowPlaybackSpeedChanging: false,
-        customControls: const MovaVideoControls(),
-        placeholder: const ColoredBox(color: Colors.black),
-        materialProgressColors: ChewieProgressColors(
-          playedColor: primaryColor,
-          handleColor: primaryColor,
-          bufferedColor: Colors.white38,
-          backgroundColor: Colors.white24,
-        ),
-      );
+      await _initializeController(_createAttachmentVideoController(url));
     } catch (_) {
-      // Keep preview fallback non-blocking when temporary authorization fails.
+      await _disposeControllers();
+      await _initializeDownloadedFallback(state, url);
     }
     if (!mounted) return;
     setState(() {
       _loading = false;
     });
+  }
+
+  Future<void> _initializeDownloadedFallback(AppState state, String url) async {
+    if (!mounted || url.trim().isEmpty) return;
+    try {
+      final tempFile = await state.downloadRemoteVideoToTemp(
+        url,
+        _safeVideoPreviewFileName(widget.attachment.fileName),
+      );
+      if (!mounted) return;
+      await _initializeController(VideoPlayerController.file(tempFile));
+    } catch (_) {
+      // Keep preview fallback non-blocking when temporary authorization fails.
+    }
+  }
+
+  Future<void> _initializeController(VideoPlayerController controller) async {
+    _controller = controller;
+    await controller.initialize();
+    if (!mounted) return;
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    _chewieController = ChewieController(
+      videoPlayerController: controller,
+      aspectRatio: controller.value.aspectRatio == 0
+          ? 16 / 9
+          : controller.value.aspectRatio,
+      autoPlay: false,
+      looping: false,
+      showOptions: false,
+      allowPlaybackSpeedChanging: false,
+      customControls: const MovaVideoControls(),
+      placeholder: const ColoredBox(color: Colors.black),
+      materialProgressColors: ChewieProgressColors(
+        playedColor: primaryColor,
+        handleColor: primaryColor,
+        bufferedColor: Colors.white38,
+        backgroundColor: Colors.white24,
+      ),
+    );
+  }
+
+  Future<void> _disposeControllers() async {
+    _chewieController?.dispose();
+    _chewieController = null;
+    final controller = _controller;
+    _controller = null;
+    await controller?.dispose();
   }
 
   @override
@@ -1030,6 +1058,15 @@ VideoPlayerController _createAttachmentVideoController(String value) {
     return VideoPlayerController.file(File(value));
   }
   return VideoPlayerController.networkUrl(Uri.parse(value));
+}
+
+String _safeVideoPreviewFileName(String fileName) {
+  final sanitized = fileName
+      .trim()
+      .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')
+      .replaceAll(RegExp(r'_+'), '_');
+  final fallback = sanitized.isEmpty ? 'preview-video.mp4' : sanitized;
+  return '${DateTime.now().microsecondsSinceEpoch}-$fallback';
 }
 
 class _FallbackThumb extends StatelessWidget {

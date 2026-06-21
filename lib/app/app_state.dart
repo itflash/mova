@@ -3592,8 +3592,6 @@ class AppState extends ChangeNotifier {
       'tasks': tasks.map(_taskToJson).toList(),
       'bucketOptions': bucketOptions,
       'domainOptions': domainOptions,
-      'qiniuBucketPrivateByBucket': _qiniuBucketPrivateByBucket,
-      'qiniuBucketPrivate': qiniuBucketPrivate,
       'activeTaskTab': activeTaskTab.name,
       'showArchivedTasks': showArchivedTasks,
       'compositionProject': _compositionProjectToJson(compositionProject),
@@ -3670,14 +3668,8 @@ class AppState extends ChangeNotifier {
     domainOptions
       ..clear()
       ..addAll(_stringListFromJson(map['domainOptions']));
-    _qiniuBucketPrivateByBucket
-      ..clear()
-      ..addAll(_boolMapFromJson(map['qiniuBucketPrivateByBucket']));
-    qiniuBucketPrivate = _nullableBoolValue(map['qiniuBucketPrivate']);
-    if (qiniuBucketPrivate != null && settings.qiniuBucket.trim().isNotEmpty) {
-      _qiniuBucketPrivateByBucket[settings.qiniuBucket.trim()] =
-          qiniuBucketPrivate!;
-    }
+    _qiniuBucketPrivateByBucket.clear();
+    qiniuBucketPrivate = null;
     activeTaskTab = _enumValue(
       TaskTab.values,
       map['activeTaskTab'],
@@ -3893,11 +3885,17 @@ class AppState extends ChangeNotifier {
           ? attachment.storageBucket!.trim()
           : settings.qiniuBucket.trim();
       final isPrivate = await _ensureQiniuBucketPrivate(bucket);
-      // 公开空间直接拼域名 + key；私有空间需要带签名 token 才能访问。
-      if (isPrivate != true) {
-        return '$normalizedDomain/${encodeObjectKeyForUrl(objectKey)}';
+      final publicUrl = '$normalizedDomain/${encodeObjectKeyForUrl(objectKey)}';
+      final canSign =
+          settings.qiniuAccessKey.trim().isNotEmpty &&
+          settings.qiniuSecretKey.trim().isNotEmpty;
+      // 明确公开空间直接拼域名 + key；私有或未知时优先生成下载凭证，
+      // 避免过期/缺失的 bucket 私有属性缓存让私有素材走裸 URL。
+      if (isPrivate == false || !canSign) {
+        return publicUrl;
       }
-      final cacheKey = 'qiniu:${purpose.name}:${attachment.id}:$objectKey';
+      final cacheKey =
+          'qiniu:${purpose.name}:$bucket:$normalizedDomain:${attachment.id}:$objectKey';
       final now = DateTime.now();
       final cached = _signedUrlCache[cacheKey];
       if (cached != null &&
@@ -4581,19 +4579,6 @@ class AppState extends ChangeNotifier {
 
   bool _boolValue(Object? value, bool fallback) =>
       value is bool ? value : fallback;
-
-  bool? _nullableBoolValue(Object? value) => value is bool ? value : null;
-
-  Map<String, bool> _boolMapFromJson(Object? value) {
-    if (value is! Map) return {};
-    final result = <String, bool>{};
-    value.forEach((key, mapValue) {
-      if (key is String && key.trim().isNotEmpty && mapValue is bool) {
-        result[key] = mapValue;
-      }
-    });
-    return result;
-  }
 
   T _enumValue<T extends Enum>(List<T> values, Object? value, T fallback) {
     if (value is! String) return fallback;

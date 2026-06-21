@@ -268,6 +268,8 @@ void main() {
           'qiniuBucket': 'qiniu-bucket',
           'qiniuDomain': 'https://cdn.example.com',
         },
+        'qiniuBucketPrivateByBucket': {'qiniu-bucket': false},
+        'qiniuBucketPrivate': false,
         'library': [
           {
             'id': 'qiniu-image',
