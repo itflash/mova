@@ -204,3 +204,39 @@ When the user says “打包”, package from:
 ```
 
 not from the legacy `if-movia` repo.
+
+## iOS Device Run & Install
+
+iPad mini 5 (UDID: `00008020-00041CAC11F9002E`) 已注册到个人开发者团队 `TJCWGB5D2K` (Apple ID: 609086479@qq.com)。签名走免费个人团队（Personal Team），不需要付费 Apple Developer Program。
+
+### Debug 模式（开发调试，支持热重载）
+
+iOS 14+ 的 debug 包是 JIT 模式，必须从 flutter tooling 启动，不能直接在 Xcode 或 iPad 主屏点图标开：
+
+```bash
+<FLUTTER_BIN> run -d 00008020-00041CAC11F9002E
+```
+
+热重载 `r`，热重启 `R`。首次冷启如果白屏，按 `R` 热重启即可恢复（Flutter 3.44 implicit engine + scene-based 配置在较老设备上的已知现象）。
+
+### Release / Profile 模式（独立运行，不依赖电脑）
+
+AOT 编译，装完直接在 iPad 主屏点图标启动：
+
+```bash
+# 构建
+<FLUTTER_BIN> build ios --release
+
+# 手动安装到设备
+xcrun devicectl device install app --device 00008020-00041CAC11F9002E build/ios/iphoneos/Runner.app
+```
+
+也可以用 `flutter run --release` 装完按 `d` detach，app 会继续跑。
+
+### 注意事项
+
+- `devicectl device install app` 在 flutter run 管道里偶尔会 hang；单独在终端跑该命令更稳
+- 首次安装需在 iPad 上信任开发者证书：设置 → 通用 → VPN与设备管理 → 609086479@qq.com → 信任
+- 免费个人团队的签名 7 天后会过期，过期后需重新 build+install
+- 若报 "No valid code signing certificates"，在 Xcode → Signing & Capabilities 确认 Team 选了 Personal Team，用 Xcode 跑一次让它自动生成证书和描述文件
+- `pod install` 需在 `ios/` 目录下执行，CocoaPods 路径 `/opt/homebrew/bin/pod`

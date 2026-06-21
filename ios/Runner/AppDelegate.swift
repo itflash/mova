@@ -9,8 +9,12 @@ import UIKit
   private var fileChannel: FlutterMethodChannel?
   private var videoFramesChannel: FlutterMethodChannel?
   private var mediaChannel: FlutterMethodChannel?
+  private var storageChannel: FlutterMethodChannel?
   private var documentPickerResult: FlutterResult?
   private var photoPickerResult: FlutterResult?
+  private var exportStateResult: FlutterResult?
+  private var exportStatePayload: String?
+  private var importStateResult: FlutterResult?
   private var pickerMode: PickerMode = .media
 
   private enum PickerMode {
@@ -97,6 +101,68 @@ import UIKit
       }
     }
     self.mediaChannel = mediaChannel
+
+    let storageChannel = FlutterMethodChannel(name: "mova/storage", binaryMessenger: messenger)
+    storageChannel.setMethodCallHandler { [weak self] call, result in
+      guard let self else { return }
+      let args = call.arguments as? [String: Any] ?? [:]
+      switch call.method {
+      case "readState":
+        result(UserDefaults.standard.string(forKey: "mova_app_state"))
+      case "writeState":
+        let value = args["value"] as? String ?? ""
+        UserDefaults.standard.set(value, forKey: "mova_app_state")
+        result(true)
+      case "exportState":
+        self.exportState(
+          value: args["value"] as? String ?? "",
+          suggestedFileName: args["suggestedFileName"] as? String ?? "mova-backup.json",
+          result: result
+        )
+      case "importState":
+        self.importState(result: result)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+    self.storageChannel = storageChannel
+  }
+
+  // MARK: - State persistence (mova/storage)
+
+  private func exportState(value: String, suggestedFileName: String, result: @escaping FlutterResult) {
+    guard exportStateResult == nil else {
+      result(FlutterError(code: "export_busy", message: "导出窗口正在打开。", details: nil))
+      return
+    }
+    exportStateResult = result
+    exportStatePayload = value
+    let picker = UIDocumentPickerViewController(forExporting: [
+      FileManager.default.temporaryDirectory.appendingPathComponent(suggestedFileName)
+    ])
+    // Write payload to temp file first
+    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(suggestedFileName)
+    do {
+      try value.write(to: tempURL, atomically: true, encoding: .utf8)
+    } catch {
+      exportStateResult = nil
+      exportStatePayload = nil
+      result(FlutterError(code: "export_failed", message: error.localizedDescription, details: nil))
+      return
+    }
+    picker.delegate = self
+    rootViewController?.present(picker, animated: true)
+  }
+
+  private func importState(result: @escaping FlutterResult) {
+    guard importStateResult == nil else {
+      result(FlutterError(code: "import_busy", message: "导入窗口正在打开。", details: nil))
+      return
+    }
+    importStateResult = result
+    let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.json])
+    picker.delegate = self
+    rootViewController?.present(picker, animated: true)
   }
 
   private func saveImageToGallery(sourcePath: String?, fileName: String?, result: @escaping FlutterResult) {
@@ -237,15 +303,64 @@ import UIKit
 
 extension AppDelegate: UIDocumentPickerDelegate {
   func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-    let result = documentPickerResult
+    // Video picker
+    let dpResult = documentPickerResult
     documentPickerResult = nil
-    result?(nil)
+    dpResult?(nil)
+    // Export
+    if let expResult = exportStateResult {
+      exportStateResult = nil
+      exportStatePayload = nil
+      expResult(nil)
+    }
+    // Import
+    if let impResult = importStateResult {
+      importStateResult = nil
+      impResult(nil)
+    }
   }
 
   func documentPicker(
     _ controller: UIDocumentPickerViewController,
     didPickDocumentsAt urls: [URL]
   ) {
+    // Export: user picked a destination, payload already written to temp file
+    if let expResult = exportStateResult {
+      exportStateResult = nil
+      exportStatePayload = nil
+      if let url = urls.first {
+        expResult(["path": url.path, "uri": url.absoluteString])
+      } else {
+        expResult(nil)
+      }
+      return
+    }
+
+    // Import: read selected file content as JSON string
+    if let impResult = importStateResult {
+      importStateResult = nil
+      guard let url = urls.first else {
+        impResult(nil)
+        return
+      }
+      do {
+        let startedAccessing = url.startAccessingSecurityScopedResource()
+        defer {
+          if startedAccessing {
+            url.stopAccessingSecurityScopedResource()
+          }
+        }
+        let data = try String(contentsOf: url, encoding: .utf8)
+        impResult(data)
+      } catch {
+        impResult(
+          FlutterError(code: "import_failed", message: error.localizedDescription, details: nil)
+        )
+      }
+      return
+    }
+
+    // Video picker
     let result = documentPickerResult
     documentPickerResult = nil
     guard let url = urls.first else {
