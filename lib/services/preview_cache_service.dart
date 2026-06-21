@@ -43,6 +43,8 @@ class PreviewCacheService {
 
   /// 视频兜底缓存子目录名。
   static const String _videoCacheDirName = 'preview-video';
+  /// CachedNetworkImage 的磁盘缓存目录名（flutter_cache_manager 默认）。
+  static const String _cachedImageDirName = 'libCachedImageData';
   /// 缩略图缓存子目录名（与 attachment_media.dart 中 _cachedVideoThumbnail 一致）。
   static const String _thumbsCacheDirName = 'mova-thumbs';
 
@@ -58,6 +60,14 @@ class PreviewCacheService {
     }
     _videoCacheDir = dir;
     return dir;
+  }
+
+
+  /// 获取 CachedNetworkImage 的磁盘缓存目录。
+  Future<Directory?> _cachedImageCacheDirectory() async {
+    final base = await getApplicationSupportDirectory();
+    final dir = Directory('${base.path}/$_cachedImageDirName');
+    return dir.existsSync() ? dir : null;
   }
 
   /// 获取缩略图缓存目录。
@@ -156,6 +166,10 @@ class PreviewCacheService {
     for (final dir in thumbDirs) {
       total += _directorySize(dir);
     }
+    final imageDir = await _cachedImageCacheDirectory();
+    if (imageDir != null) {
+      total += _directorySize(imageDir);
+    }
     return total;
   }
 
@@ -167,6 +181,10 @@ class PreviewCacheService {
     final thumbDirs = await _thumbsCacheDirectories();
     for (final dir in thumbDirs) {
       freed += _clearDirectory(dir);
+    }
+    final imageDir = await _cachedImageCacheDirectory();
+    if (imageDir != null) {
+      freed += _clearDirectory(imageDir);
     }
     return freed;
   }

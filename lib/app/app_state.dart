@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'composition_models.dart';
 import 'mock_data.dart';
@@ -780,16 +781,40 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<String> _persistCompositionVideo(String sourceUri, String fileName) async {
+    final sourcePath = sourceUri.startsWith('file://')
+        ? Uri.tryParse(sourceUri)?.path ?? sourceUri
+        : sourceUri;
+    final sourceFile = File(sourcePath);
+    if (!sourceFile.existsSync()) return sourceUri;
+    final appSupportDir = await getApplicationSupportDirectory();
+    final compVideoDir = Directory('${appSupportDir.path}/composition-videos');
+    if (!compVideoDir.existsSync()) {
+      compVideoDir.createSync(recursive: true);
+    }
+    final safeName = fileName.isNotEmpty
+        ? fileName
+        : 'comp-${DateTime.now().millisecondsSinceEpoch}.mp4';
+    final dest = File('${compVideoDir.path}/$safeName');
+    if (dest.existsSync()) {
+      dest.deleteSync();
+    }
+    await sourceFile.copy(dest.path);
+    return dest.path;
+  }
+
   Future<void> pickAndAddLocalCompositionVideo() async {
     final picked = await _filePicker.pickSingleVideoFile();
     final uri = picked?.uri.trim() ?? '';
     if (picked == null || uri.isEmpty) return;
 
+    final persistentUri = await _persistCompositionVideo(uri, picked.name);
+
     addCompositionClip(
       CompositionClip.local(
         id: 'clip-${DateTime.now().millisecondsSinceEpoch}',
         label: picked.name,
-        localUri: uri,
+        localUri: persistentUri,
         fileName: picked.name,
         startMs: 0,
         endMs: picked.durationMs ?? 15000,
@@ -804,12 +829,14 @@ class AppState extends ChangeNotifier {
     final uri = picked?.uri.trim() ?? '';
     if (picked == null || uri.isEmpty) return;
 
+    final persistentUri = await _persistCompositionVideo(uri, picked.name);
+
     updateCompositionClip(
       clipId,
       (current) => current.copyWith(
         label: picked.name,
         sourceType: CompositionSourceType.localFile,
-        sourceUri: uri,
+        sourceUri: persistentUri,
         fileName: picked.name,
         startMs: 0,
         endMs: picked.durationMs ?? 15000,
@@ -2192,20 +2219,35 @@ class AppState extends ChangeNotifier {
         await sink.close();
       }
 
-      final saved = await _mediaChannel.invokeMapMethod<String, Object?>(
-        'saveVideoToGallery',
-        {'sourcePath': tempFile.path, 'fileName': fileName},
-      );
-      final savedPath = saved?['path'] as String?;
-      final savedUri = saved?['uri'] as String?;
+      // Save to gallery (best effort) for user convenience
+      try {
+        await _mediaChannel.invokeMapMethod<String, Object?>(
+          'saveVideoToGallery',
+          {'sourcePath': tempFile.path, 'fileName': fileName},
+        );
+      } catch (_) {
+        // Gallery save is best-effort; persistence below is what matters for replay.
+      }
+
+      // Copy to persistent app storage so the video survives app restarts.
+      final appSupportDir = await getApplicationSupportDirectory();
+      final taskVideoDir = Directory('${appSupportDir.path}/task-videos');
+      if (!taskVideoDir.existsSync()) {
+        taskVideoDir.createSync(recursive: true);
+      }
+      final persistentFile = File('${taskVideoDir.path}/$fileName');
+      if (persistentFile.existsSync()) {
+        persistentFile.deleteSync();
+      }
+      await tempFile.copy(persistentFile.path);
 
       final latestIndex = tasks.indexWhere((item) => item.id == taskId);
       if (latestIndex == -1) return false;
       tasks[latestIndex] = tasks[latestIndex].copyWith(
         downloadStatus: DownloadStatus.success,
         downloadProgress: 100,
-        localFileName: savedPath ?? tempFile.path,
-        localResourceUri: savedUri ?? savedPath ?? tempFile.path,
+        localFileName: fileName,
+        localResourceUri: persistentFile.path,
         updatedAt: DateTime.now(),
         hasAnomaly: false,
         clearAnomalyMessage: true,

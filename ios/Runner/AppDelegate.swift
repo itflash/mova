@@ -10,9 +10,10 @@ import UIKit
   private var videoFramesChannel: FlutterMethodChannel?
   private var mediaChannel: FlutterMethodChannel?
   private var storageChannel: FlutterMethodChannel?
-  private var documentPickerResult: FlutterResult?
-  private var photoPickerResult: FlutterResult?
-  private var exportStateResult: FlutterResult?
+ private var documentPickerResult: FlutterResult?
+ private var photoPickerResult: FlutterResult?
+ private var mediaPickerResult: FlutterResult?
+ private var exportStateResult: FlutterResult?
   private var exportStatePayload: String?
   private var importStateResult: FlutterResult?
   private var pickerMode: PickerMode = .media
@@ -40,7 +41,7 @@ import UIKit
       case "pickSingleVideoFile":
         self.presentVideoPicker(result: result)
       case "pickMediaFiles":
-        result(FlutterMethodNotImplemented)
+        self.presentMediaPicker(result: result)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -135,21 +136,16 @@ import UIKit
       result(FlutterError(code: "export_busy", message: "导出窗口正在打开。", details: nil))
       return
     }
-    exportStateResult = result
-    exportStatePayload = value
-    let picker = UIDocumentPickerViewController(forExporting: [
-      FileManager.default.temporaryDirectory.appendingPathComponent(suggestedFileName)
-    ])
-    // Write payload to temp file first
     let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(suggestedFileName)
     do {
       try value.write(to: tempURL, atomically: true, encoding: .utf8)
     } catch {
-      exportStateResult = nil
-      exportStatePayload = nil
       result(FlutterError(code: "export_failed", message: error.localizedDescription, details: nil))
       return
     }
+    exportStateResult = result
+    exportStatePayload = value
+    let picker = UIDocumentPickerViewController(forExporting: [tempURL])
     picker.delegate = self
     rootViewController?.present(picker, animated: true)
   }
@@ -163,6 +159,13 @@ import UIKit
     let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.json])
     picker.delegate = self
     rootViewController?.present(picker, animated: true)
+  }
+
+
+  private func videoDurationMs(_ url: URL) -> Int {
+    let asset = AVURLAsset(url: url)
+    let duration = CMTimeGetSeconds(asset.duration)
+    return duration > 0 ? Int(duration * 1000) : 0
   }
 
   private func saveImageToGallery(sourcePath: String?, fileName: String?, result: @escaping FlutterResult) {
@@ -219,11 +222,29 @@ import UIKit
     }
   }
 
-  private func presentVideoPicker(result: @escaping FlutterResult) {
-    guard documentPickerResult == nil && photoPickerResult == nil else {
-      result(FlutterError(code: "picker_busy", message: "文件选择器正在打开。", details: nil))
+  private func presentMediaPicker(result: @escaping FlutterResult) {
+    if let stale = documentPickerResult { documentPickerResult = nil; stale(nil) }
+    if let stale = photoPickerResult { photoPickerResult = nil; stale(nil) }
+    if let stale = mediaPickerResult { mediaPickerResult = nil; stale(nil) }
+    if #available(iOS 14, *) {
+      mediaPickerResult = result
+      var configuration = PHPickerConfiguration(photoLibrary: .shared())
+      configuration.filter = .any(of: [.images, .videos])
+      configuration.selectionLimit = 20
+      configuration.preferredAssetRepresentationMode = .current
+      let picker = PHPickerViewController(configuration: configuration)
+      picker.delegate = self
+      rootViewController?.present(picker, animated: true)
       return
     }
+    result(FlutterMethodNotImplemented)
+  }
+
+  private func presentVideoPicker(result: @escaping FlutterResult) {
+    // Clean up any stale results from previous pickers that may not have fired their delegate.
+    if let stale = documentPickerResult { documentPickerResult = nil; stale(nil) }
+    if let stale = photoPickerResult { photoPickerResult = nil; stale(nil) }
+    if let stale = mediaPickerResult { mediaPickerResult = nil; stale(nil) }
     if #available(iOS 14, *) {
       photoPickerResult = result
       var configuration = PHPickerConfiguration(photoLibrary: .shared())
@@ -400,6 +421,15 @@ extension AppDelegate: UIDocumentPickerDelegate {
 extension AppDelegate: PHPickerViewControllerDelegate {
   func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
     picker.dismiss(animated: true)
+
+    // Media multi-picker
+    if let mediaResult = mediaPickerResult {
+      mediaPickerResult = nil
+      handleMediaPickerResults(results, result: mediaResult)
+      return
+    }
+
+    // Single video picker
     let result = photoPickerResult
     photoPickerResult = nil
 
@@ -432,12 +462,14 @@ extension AppDelegate: PHPickerViewControllerDelegate {
             try FileManager.default.removeItem(at: target)
           }
           try FileManager.default.copyItem(at: url, to: target)
+          let durationMs = self.videoDurationMs(target)
           DispatchQueue.main.async {
             result?([
               "name": target.lastPathComponent,
               "mimeType": "video/mp4",
               "uri": target.absoluteString,
               "path": target.path,
+              "durationMs": durationMs,
             ])
           }
         } catch {
@@ -452,5 +484,105 @@ extension AppDelegate: PHPickerViewControllerDelegate {
     }
 
     result?(nil)
+  }
+
+  private func handleMediaPickerResults(_ results: [PHPickerResult], result: @escaping FlutterResult) {
+    guard !results.isEmpty else {
+      result([])
+      return
+    }
+
+    let group = DispatchGroup()
+    var files: [[String: Any]] = []
+    var errors: [String] = []
+    let lock = NSLock()
+
+    for item in results {
+      group.enter()
+      let provider = item.itemProvider
+
+      if provider.hasItemConformingToTypeIdentifier("public.movie") {
+        provider.loadFileRepresentation(forTypeIdentifier: "public.movie") { url, error in
+          defer { group.leave() }
+          if let error {
+            lock.lock()
+            errors.append(error.localizedDescription)
+            lock.unlock()
+            return
+          }
+          guard let url else { return }
+          self.copyPickedFile(url: url, mimeType: "video/mp4", files: &files, lock: lock)
+        }
+      } else if provider.hasItemConformingToTypeIdentifier("public.image") {
+        provider.loadFileRepresentation(forTypeIdentifier: "public.image") { url, error in
+          defer { group.leave() }
+          if let error {
+            lock.lock()
+            errors.append(error.localizedDescription)
+            lock.unlock()
+            return
+          }
+          guard let url else { return }
+          let mimeType = self.mimeTypeForPath(url.path)
+          self.copyPickedFile(url: url, mimeType: mimeType, files: &files, lock: lock)
+        }
+      } else {
+        group.leave()
+      }
+    }
+
+    group.notify(queue: .main) {
+      if files.isEmpty && !errors.isEmpty {
+        result(
+          FlutterError(code: "pick_failed", message: errors.joined(separator: "; "), details: nil)
+        )
+      } else {
+        result(files)
+      }
+    }
+  }
+
+  private func copyPickedFile(url: URL, mimeType: String, files: inout [[String: Any]], lock: NSLock) {
+    let target = FileManager.default.temporaryDirectory.appendingPathComponent(url.lastPathComponent)
+    do {
+      if FileManager.default.fileExists(atPath: target.path) {
+        try FileManager.default.removeItem(at: target)
+      }
+      try FileManager.default.copyItem(at: url, to: target)
+      let fileData = try Data(contentsOf: target)
+      lock.lock()
+      files.append([
+        "name": target.lastPathComponent,
+        "mimeType": mimeType,
+        "bytes": FlutterStandardTypedData(bytes: fileData),
+        "uri": target.absoluteString,
+        "path": target.path,
+      ])
+      lock.unlock()
+    } catch {
+      lock.lock()
+      files.append([
+        "name": target.lastPathComponent,
+        "mimeType": mimeType,
+        "bytes": FlutterStandardTypedData(bytes: Data()),
+        "uri": target.absoluteString,
+        "path": target.path,
+      ])
+      lock.unlock()
+    }
+  }
+
+  private func mimeTypeForPath(_ path: String) -> String {
+    let ext = (path as NSString).pathExtension.lowercased()
+    switch ext {
+    case "jpg", "jpeg": return "image/jpeg"
+    case "png": return "image/png"
+    case "gif": return "image/gif"
+    case "heic": return "image/heic"
+    case "webp": return "image/webp"
+    case "mp4": return "video/mp4"
+    case "mov": return "video/quicktime"
+    default: return "application/octet-stream"
+    }
   }
 }
