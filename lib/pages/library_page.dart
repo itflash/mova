@@ -141,7 +141,12 @@ class _LibraryPageState extends State<LibraryPage> {
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
               ),
             ),
-          if (isCompactMode && _selectedAttachmentIds.isNotEmpty)
+          if (!isCompactMode)
+            _LibraryGroupedSliver(
+              groups: groupAttachmentsByTask(visibleAttachments),
+              previewAttachments: visibleAttachments,
+            ),
+          if (isCompactMode)
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
               sliver: SliverToBoxAdapter(
@@ -176,27 +181,23 @@ class _LibraryPageState extends State<LibraryPage> {
                               : '全选',
                         ),
                       ),
-                      FilledButton.icon(
-                        onPressed: () => _deleteSelectedAttachments(
-                          context,
-                          appState,
-                          visibleAttachments,
+                      if (_selectedAttachmentIds.isNotEmpty)
+                        FilledButton.icon(
+                          onPressed: () => _deleteSelectedAttachments(
+                            context,
+                            appState,
+                            visibleAttachments,
+                          ),
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            size: 18,
+                          ),
+                          label: Text('删除 ${_selectedAttachmentIds.length}'),
                         ),
-                        icon: const Icon(
-                          Icons.delete_outline_rounded,
-                          size: 18,
-                        ),
-                        label: Text('删除 ${_selectedAttachmentIds.length}'),
-                      ),
                     ],
                   ),
                 ),
               ),
-            )
-          else
-            _LibraryGroupedSliver(
-              groups: groupAttachmentsByTask(visibleAttachments),
-              previewAttachments: visibleAttachments,
             ),
         ],
       ),

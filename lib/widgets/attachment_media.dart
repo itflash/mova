@@ -603,9 +603,7 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
     final primaryColor = Theme.of(context).colorScheme.primary;
     _chewieController = ChewieController(
       videoPlayerController: controller,
-      aspectRatio: controller.value.aspectRatio == 0
-          ? 16 / 9
-          : controller.value.aspectRatio,
+      aspectRatio: 16 / 9,
       autoPlay: false,
       looping: false,
       showOptions: false,
