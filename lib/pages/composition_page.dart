@@ -221,7 +221,8 @@ class _ExportActionButtonsState extends State<_ExportActionButtons> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final attachmentId = await widget.state.importCompositionExportToLibrary();
+      final attachmentId = await widget.state
+          .importCompositionExportToLibrary();
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -232,7 +233,9 @@ class _ExportActionButtonsState extends State<_ExportActionButtons> {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(widget.state.cleanErrorForDisplay(error))));
+        ..showSnackBar(
+          SnackBar(content: Text(widget.state.cleanErrorForDisplay(error))),
+        );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -247,14 +250,22 @@ class _ExportActionButtonsState extends State<_ExportActionButtons> {
         _NeutralActionButton(
           onPressed: _busy ? null : _saveToGallery,
           icon: _busy
-              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
               : const Icon(Icons.save_alt_rounded),
           label: '保存到相册/文件',
         ),
         _NeutralActionButton(
           onPressed: _busy ? null : _importToLibrary,
           icon: _busy
-              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
               : const Icon(Icons.photo_library_rounded),
           label: '导入素材库',
         ),
@@ -372,7 +383,12 @@ class _CompositionClipCardState extends State<_CompositionClipCard> {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(AppRadius.control),
-                    child: _CompositionClipPreview(key: _previewKey, uri: clip.sourceUri, startMs: clip.startMs, endMs: clip.endMs),
+                    child: _CompositionClipPreview(
+                      key: _previewKey,
+                      uri: clip.sourceUri,
+                      startMs: clip.startMs,
+                      endMs: clip.endMs,
+                    ),
                   ),
                   Positioned(
                     right: 8,
@@ -441,7 +457,9 @@ class _CompositionClipCardState extends State<_CompositionClipCard> {
                   isScrollControlled: true,
                   backgroundColor: Theme.of(context).colorScheme.surface,
                   shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(28),
+                    ),
                   ),
                   builder: (context) => _ClipTrimSheet(clip: clip),
                 );
@@ -600,8 +618,6 @@ class _NeutralActionButton extends StatelessWidget {
   }
 }
 
-
-
 class _ClipTrimSheet extends StatefulWidget {
   const _ClipTrimSheet({required this.clip});
 
@@ -656,7 +672,8 @@ class _ClipTrimSheetState extends State<_ClipTrimSheet> {
     final durationMs = controller.value.duration.inMilliseconds;
     // Only enforce range limits during playback, not when seeking/dragging.
     if (!controller.value.isPlaying) return;
-    final reachedEnd = next >= _endMs || (durationMs > 0 && next >= durationMs - 80);
+    final reachedEnd =
+        next >= _endMs || (durationMs > 0 && next >= durationMs - 80);
     if (reachedEnd) {
       controller.pause();
       controller.seekTo(Duration(milliseconds: _startMs));
@@ -753,8 +770,11 @@ class _ClipTrimSheetState extends State<_ClipTrimSheet> {
                                   if (controller.value.isPlaying) {
                                     await controller.pause();
                                   } else {
-                                    if (_positionMs < _startMs || _positionMs >= _endMs) {
-                                      await controller.seekTo(Duration(milliseconds: _startMs));
+                                    if (_positionMs < _startMs ||
+                                        _positionMs >= _endMs) {
+                                      await controller.seekTo(
+                                        Duration(milliseconds: _startMs),
+                                      );
                                     }
                                     await controller.play();
                                   }
@@ -1007,8 +1027,8 @@ class _AddClipButtonsState extends State<_AddClipButtons> {
           ),
         ),
         FilledButton.tonalIcon(
-         onPressed: _busy ? null : _addFromLibrary,
-         icon: const Icon(Icons.video_library_rounded, size: 18),
+          onPressed: _busy ? null : _addFromLibrary,
+          icon: const Icon(Icons.video_library_rounded, size: 18),
           label: const Text('素材库视频'),
         ),
       ],
@@ -1039,7 +1059,12 @@ class _TimelineMarker extends StatelessWidget {
 }
 
 class _CompositionClipPreview extends StatefulWidget {
-  const _CompositionClipPreview({super.key, required this.uri, this.startMs = 0, this.endMs = 0});
+  const _CompositionClipPreview({
+    super.key,
+    required this.uri,
+    this.startMs = 0,
+    this.endMs = 0,
+  });
 
   final String uri;
   final int startMs;
@@ -1067,8 +1092,11 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
     if (controller == null || !controller.value.isInitialized) return;
     if (!controller.value.isPlaying) return;
     final next = controller.value.position.inMilliseconds;
-    final endMs = widget.endMs > 0 ? widget.endMs : controller.value.duration.inMilliseconds;
-    final reachedEnd = next >= endMs ||
+    final endMs = widget.endMs > 0
+        ? widget.endMs
+        : controller.value.duration.inMilliseconds;
+    final reachedEnd =
+        next >= endMs ||
         (controller.value.duration.inMilliseconds > 0 &&
             next >= controller.value.duration.inMilliseconds - 80);
     if (reachedEnd) {
@@ -1089,7 +1117,8 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
       _ready = false;
       _error = null;
       _initialize();
-    } else if (oldWidget.startMs != widget.startMs || oldWidget.endMs != widget.endMs) {
+    } else if (oldWidget.startMs != widget.startMs ||
+        oldWidget.endMs != widget.endMs) {
       final controller = _controller;
       if (controller != null && controller.value.isInitialized) {
         if (controller.value.isPlaying) {
@@ -1116,7 +1145,10 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
         looping: false,
         showOptions: false,
         allowPlaybackSpeedChanging: false,
-        customControls: MovaVideoControls(trimStartMs: widget.startMs, trimEndMs: widget.endMs),
+        customControls: MovaVideoControls(
+          trimStartMs: widget.startMs,
+          trimEndMs: widget.endMs,
+        ),
         placeholder: const ColoredBox(color: Colors.black),
         materialProgressColors: ChewieProgressColors(
           playedColor: primaryColor,
@@ -1156,7 +1188,10 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
           looping: false,
           showOptions: false,
           allowPlaybackSpeedChanging: false,
-          customControls: MovaVideoControls(trimStartMs: widget.startMs, trimEndMs: widget.endMs),
+          customControls: MovaVideoControls(
+            trimStartMs: widget.startMs,
+            trimEndMs: widget.endMs,
+          ),
           placeholder: const ColoredBox(color: Colors.black),
           materialProgressColors: ChewieProgressColors(
             playedColor: primaryColor,
@@ -1210,25 +1245,22 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
   Widget build(BuildContext context) {
     final controller = _controller;
     final chewieController = _chewieController;
-    if (!_ready || controller == null || !controller.value.isInitialized || chewieController == null) {
+    if (!_ready ||
+        controller == null ||
+        !controller.value.isInitialized ||
+        chewieController == null) {
       return _PreviewFallback(label: _error ?? '视频暂不可播放');
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppRadius.control),
       child: ColoredBox(
         color: Colors.black,
-        child: Center(
-          child: AspectRatio(
-            aspectRatio: controller.value.aspectRatio == 0
-                ? 16 / 9
-                : controller.value.aspectRatio,
-            child: Chewie(controller: chewieController),
-          ),
-        ),
+        child: Chewie(controller: chewieController),
       ),
     );
   }
 }
+
 String? _missingLocalVideoPath(String value) {
   final uri = Uri.tryParse(value);
   if (uri != null && uri.scheme == 'file') {

@@ -644,10 +644,10 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
         label: _fallbackStatus == _PreviewFallbackStatus.downloading
             ? '正在下载 $_downloadProgress%'
             : _fallbackStatus == _PreviewFallbackStatus.preparing
-                ? '正在准备预览'
-                : _fallbackStatus == _PreviewFallbackStatus.failed
-                    ? '预览准备失败'
-                    : widget.label,
+            ? '正在准备预览'
+            : _fallbackStatus == _PreviewFallbackStatus.failed
+            ? '预览准备失败'
+            : widget.label,
         progress: _fallbackStatus == _PreviewFallbackStatus.downloading
             ? _downloadProgress / 100.0
             : null,
@@ -677,12 +677,7 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
       borderRadius: BorderRadius.circular(AppRadius.card),
       child: ColoredBox(
         color: Colors.black,
-        child: AspectRatio(
-          aspectRatio: _controller!.value.aspectRatio == 0
-              ? 16 / 9
-              : _controller!.value.aspectRatio,
-          child: Chewie(controller: _chewieController!),
-        ),
+        child: Chewie(controller: _chewieController!),
       ),
     );
   }
@@ -748,8 +743,13 @@ class _MovaVideoControlsState extends State<MovaVideoControls> {
         ? widget.trimEndMs!.toDouble()
         : fullDuration.inMilliseconds.toDouble());
     final trimDuration = trimEnd - trimStart;
-    final fullPos = value.position > fullDuration ? fullDuration : value.position;
-    final relPos = (fullPos.inMilliseconds.toDouble() - trimStart).clamp(0.0, trimDuration);
+    final fullPos = value.position > fullDuration
+        ? fullDuration
+        : value.position;
+    final relPos = (fullPos.inMilliseconds.toDouble() - trimStart).clamp(
+      0.0,
+      trimDuration,
+    );
     final durationMs = trimDuration.clamp(1.0, double.infinity);
 
     return Stack(
@@ -760,16 +760,6 @@ class _MovaVideoControlsState extends State<MovaVideoControls> {
             onTap: _togglePlay,
           ),
         ),
-        if (!value.isPlaying)
-          Center(
-            child: _VideoRoundButton(
-              tooltip: '播放',
-              icon: Icons.play_arrow_rounded,
-              onPressed: _togglePlay,
-              size: 50,
-              iconSize: 30,
-            ),
-          ),
         Positioned(
           left: 0,
           right: 0,
@@ -795,15 +785,20 @@ class _MovaVideoControlsState extends State<MovaVideoControls> {
                           : Icons.play_arrow_rounded,
                       onPressed: _togglePlay,
                     ),
-                    const SizedBox(width: 10),
-                    Text(
-                      '${_formatDuration(Duration(milliseconds: relPos.round()))} / ${_formatDuration(Duration(milliseconds: trimDuration.round()))}',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        '${_formatDuration(Duration(milliseconds: relPos.round()))} / ${_formatDuration(Duration(milliseconds: trimDuration.round()))}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 8),
                     _VideoRoundButton(
                       tooltip: chewieController.isFullScreen ? '退出全屏' : '全屏',
                       onPressed: chewieController.toggleFullScreen,
@@ -1162,12 +1157,7 @@ class _FallbackThumb extends StatelessWidget {
 }
 
 /// 视频兜底下载的状态，用于 UI 展示准备进度。
-enum _PreviewFallbackStatus {
-  idle,
-  preparing,
-  downloading,
-  failed,
-}
+enum _PreviewFallbackStatus { idle, preparing, downloading, failed }
 
 /// 预览状态占位框：展示图标 + 文字，可选进度条（兜底下载时用）。
 /// 高度与 _PreviewFallback 保持一致（280），确保切换状态时布局不跳动。
