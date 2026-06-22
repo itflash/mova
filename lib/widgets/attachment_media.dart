@@ -1036,7 +1036,13 @@ class _ResolvedAttachmentVideoThumbState
         return;
       }
       _resolvedUrl = url.trim();
-      final cached = await _cachedVideoThumbnail(_resolvedUrl!);
+      // 用稳定的 previewCacheKey 做缓存文件名，避免签名 URL 刷新后
+      // hash 变化导致缓存失效、每次滚动都重新抽帧。
+      final stableKey = previewCacheKey(widget.attachment);
+      final cached = await _cachedVideoThumbnail(
+        _resolvedUrl!,
+        cacheKey: stableKey,
+      );
       if (!mounted) return;
       setState(() {
         _thumbPath = cached;
@@ -1265,10 +1271,17 @@ class _PreviewFallback extends StatelessWidget {
   }
 }
 
-/// 用 ffmpeg 给视频抽一帧首帧作为缩略图，结果按 url 哈希缓存到系统临时目录。
+/// 用 ffmpeg 给视频抽一帧首帧作为缩略图，结果按稳定 cacheKey 缓存到磁盘。
 /// 同一视频重复滚动进入列表时直接读已有 jpg，不重复抽帧，避免卡顿。
 /// 抽帧失败（网络异常、格式不支持等）返回 null，调用方降级到 fallback 占位图。
-Future<String?> _cachedVideoThumbnail(String videoUrl) async {
+///
+/// 缓存文件名用传入的稳定 [cacheKey]（由 previewCacheKey 生成，基于
+/// storageProvider+bucket+objectKey+fileSizeBytes），而非签名 URL 的哈希，
+/// 这样私有空间签名 URL 过期刷新后仍命中同一份缩略图。
+Future<String?> _cachedVideoThumbnail(
+  String videoUrl, {
+  required String cacheKey,
+}) async {
   // 缩略图缓存放 applicationSupportDirectory（稳定目录），
   // 同时检查 systemTemp 旧目录以兼容历史缓存数据。
   final stableDir = Directory(
@@ -1277,18 +1290,25 @@ Future<String?> _cachedVideoThumbnail(String videoUrl) async {
   if (!stableDir.existsSync()) {
     stableDir.createSync(recursive: true);
   }
-  final hash = md5.convert(utf8.encode(videoUrl)).toString();
-  final thumbPath = '${stableDir.path}/$hash.jpg';
+  final thumbPath = '${stableDir.path}/$cacheKey.jpg';
   final thumbFile = File(thumbPath);
   if (thumbFile.existsSync() && thumbFile.lengthSync() > 0) {
     return thumbPath;
   }
-  // 兼容旧目录：systemTemp 下已有缓存直接复用。
-  final legacyPath =
-      '${Directory.systemTemp.path}/mova-thumbs/$hash.jpg';
-  final legacyFile = File(legacyPath);
-  if (legacyFile.existsSync() && legacyFile.lengthSync() > 0) {
-    return legacyPath;
+  // 兼容旧版：旧缓存按签名 URL 的 md5 哈希命名，命中后直接复用。
+  final legacyHash = md5.convert(utf8.encode(videoUrl)).toString();
+  final legacyStablePath = '${stableDir.path}/$legacyHash.jpg';
+  final legacyStableFile = File(legacyStablePath);
+  if (legacyStableFile.existsSync() && legacyStableFile.lengthSync() > 0) {
+    // 迁移到新的稳定 key 命名，后续命中更快。
+    legacyStableFile.renameSync(thumbPath);
+    return thumbPath;
+  }
+  final legacyTempPath =
+      '${Directory.systemTemp.path}/mova-thumbs/$legacyHash.jpg';
+  final legacyTempFile = File(legacyTempPath);
+  if (legacyTempFile.existsSync() && legacyTempFile.lengthSync() > 0) {
+    return legacyTempPath;
   }
   // -ss 1 seek 到 1 秒（输入前，快进），-frames:v 1 只取一帧，
   // scale=480:-2 缩放到宽 480、高度自动对齐偶数，-q:v 4 控制质量/体积。
