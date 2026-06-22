@@ -503,6 +503,15 @@ class _CompactAttachmentRow extends StatelessWidget {
                     color: colorScheme.onSurfaceVariant,
                   ),
                 ),
+                const SizedBox(height: 4),
+                Text(
+                  _roleLabel(attachment.role),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
                 const SizedBox(height: 6),
                 Wrap(
                   spacing: 8,
@@ -1600,7 +1609,7 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       _formatCompactDateTime(attachment.createdAt),
                       maxLines: 1,
@@ -1791,21 +1800,6 @@ class _AttachmentCardState extends State<_AttachmentCard> {
     }
   }
 
-  String _roleLabel(AttachmentRole role) {
-    switch (role) {
-      case AttachmentRole.firstFrame:
-        return '首帧图';
-      case AttachmentRole.lastFrame:
-        return '尾帧图';
-      case AttachmentRole.referenceImage:
-        return '参考图';
-      case AttachmentRole.referenceVideo:
-        return '参考视频';
-      case AttachmentRole.referenceAudio:
-        return '参考音频';
-    }
-  }
-
   String _statusLabel(AttachmentStatus status) {
     switch (status) {
       case AttachmentStatus.queued:
@@ -1858,6 +1852,21 @@ class _AttachmentCardState extends State<_AttachmentCard> {
       case AttachmentLocalStatus.error:
         return scheme.error;
     }
+  }
+}
+
+String _roleLabel(AttachmentRole role) {
+  switch (role) {
+    case AttachmentRole.firstFrame:
+      return '首帧图';
+    case AttachmentRole.lastFrame:
+      return '尾帧图';
+    case AttachmentRole.referenceImage:
+      return '参考图';
+    case AttachmentRole.referenceVideo:
+      return '参考视频';
+    case AttachmentRole.referenceAudio:
+      return '参考音频';
   }
 }
 
