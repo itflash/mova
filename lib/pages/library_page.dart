@@ -88,39 +88,12 @@ class _LibraryPageState extends State<LibraryPage> {
                 const SectionLabel('素材列表'),
                 _LibraryViewToolbar(
                   mode: appState.libraryViewMode,
-                  selectedCount: _selectedAttachmentIds.length,
-                  visibleCount: visibleAttachments.length,
                   onModeChanged: (mode) {
                     appState.setLibraryViewMode(mode);
                     if (mode != LibraryViewMode.compact) {
                       setState(_selectedAttachmentIds.clear);
                     }
                   },
-                  onSelectAll: isCompactMode
-                      ? () {
-                          setState(() {
-                            final visibleIds = visibleAttachments
-                                .map((item) => item.id)
-                                .toSet();
-                            if (_selectedAttachmentIds.length ==
-                                visibleIds.length) {
-                              _selectedAttachmentIds.clear();
-                            } else {
-                              _selectedAttachmentIds
-                                ..clear()
-                                ..addAll(visibleIds);
-                            }
-                          });
-                        }
-                      : null,
-                  onDeleteSelected:
-                      isCompactMode && _selectedAttachmentIds.isNotEmpty
-                      ? () => _deleteSelectedAttachments(
-                          context,
-                          appState,
-                          visibleAttachments,
-                        )
-                      : null,
                 ),
                 const SizedBox(height: 16),
                 if (appState.uploadErrorMessage != null) ...[
@@ -166,6 +139,58 @@ class _LibraryPageState extends State<LibraryPage> {
                   );
                 },
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
+              ),
+            ),
+          if (isCompactMode && _selectedAttachmentIds.isNotEmpty)
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+              sliver: SliverToBoxAdapter(
+                child: UtilityPanel(
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            final visibleIds = visibleAttachments
+                                .map((item) => item.id)
+                                .toSet();
+                            if (_selectedAttachmentIds.length ==
+                                visibleIds.length) {
+                              _selectedAttachmentIds.clear();
+                            } else {
+                              _selectedAttachmentIds
+                                ..clear()
+                                ..addAll(visibleIds);
+                            }
+                          });
+                        },
+                        icon: const Icon(Icons.select_all_rounded, size: 18),
+                        label: Text(
+                          _selectedAttachmentIds.length ==
+                                      visibleAttachments.length &&
+                                  visibleAttachments.isNotEmpty
+                              ? '取消全选'
+                              : '全选',
+                        ),
+                      ),
+                      FilledButton.icon(
+                        onPressed: () => _deleteSelectedAttachments(
+                          context,
+                          appState,
+                          visibleAttachments,
+                        ),
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 18,
+                        ),
+                        label: Text('删除 ${_selectedAttachmentIds.length}'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             )
           else
@@ -376,21 +401,10 @@ class _LibraryFilterPanelState extends State<_LibraryFilterPanel> {
 }
 
 class _LibraryViewToolbar extends StatelessWidget {
-  const _LibraryViewToolbar({
-    required this.mode,
-    required this.selectedCount,
-    required this.visibleCount,
-    required this.onModeChanged,
-    required this.onSelectAll,
-    required this.onDeleteSelected,
-  });
+  const _LibraryViewToolbar({required this.mode, required this.onModeChanged});
 
   final LibraryViewMode mode;
-  final int selectedCount;
-  final int visibleCount;
   final ValueChanged<LibraryViewMode> onModeChanged;
-  final VoidCallback? onSelectAll;
-  final VoidCallback? onDeleteSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -417,22 +431,6 @@ class _LibraryViewToolbar extends StatelessWidget {
             emptySelectionAllowed: false,
             onSelectionChanged: (selected) => onModeChanged(selected.first),
           ),
-          if (mode == LibraryViewMode.compact) ...[
-            OutlinedButton.icon(
-              onPressed: visibleCount == 0 ? null : onSelectAll,
-              icon: const Icon(Icons.select_all_rounded, size: 18),
-              label: Text(
-                selectedCount == visibleCount && visibleCount > 0
-                    ? '取消全选'
-                    : '全选',
-              ),
-            ),
-            FilledButton.icon(
-              onPressed: onDeleteSelected,
-              icon: const Icon(Icons.delete_outline_rounded, size: 18),
-              label: Text(selectedCount == 0 ? '删除' : '删除 $selectedCount'),
-            ),
-          ],
         ],
       ),
     );
@@ -572,7 +570,9 @@ class _LibraryEmptyState extends StatelessWidget {
         children: [
           Text(
             hasFilters ? '没有匹配结果' : '素材库还是空的',
-            style: Theme.of(context).textTheme.titleMedium,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(height: 1.2),
           ),
           const SizedBox(height: 6),
           Text(
@@ -1610,7 +1610,6 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 2),
                     Text(
                       _formatCompactDateTime(attachment.createdAt),
                       maxLines: 1,
@@ -1982,7 +1981,9 @@ class _AttachmentLabelDisplay extends StatelessWidget {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleMedium,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(height: 1.2),
             ),
           ),
           const SizedBox(width: 8),
