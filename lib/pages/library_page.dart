@@ -461,6 +461,7 @@ class _CompactAttachmentRow extends StatelessWidget {
     return UtilityPanel(
       padding: const EdgeInsets.all(10),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Checkbox(
             value: selected,
@@ -1974,26 +1975,23 @@ class _AttachmentLabelDisplay extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(AppRadius.control),
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleMedium,
             ),
-            const SizedBox(width: 8),
-            Icon(
-              Icons.edit_outlined,
-              size: 16,
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 8),
+          Icon(
+            Icons.edit_outlined,
+            size: 16,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ],
       ),
     );
   }
