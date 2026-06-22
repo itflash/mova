@@ -1021,7 +1021,7 @@ class _AddClipButtonsState extends State<_AddClipButtons> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.add_rounded, size: 18),
-            label: const Text('+本地视频'),
+            label: const Text('本地视频'),
           ),
         ),
         Expanded(
