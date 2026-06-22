@@ -1255,7 +1255,26 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
       borderRadius: BorderRadius.circular(AppRadius.control),
       child: ColoredBox(
         color: Colors.black,
-        child: Chewie(controller: chewieController),
+        child: ChewieControllerProvider(
+          controller: chewieController,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Center(
+                child: AspectRatio(
+                  aspectRatio: controller.value.aspectRatio == 0
+                      ? 16 / 9
+                      : controller.value.aspectRatio,
+                  child: VideoPlayer(controller),
+                ),
+              ),
+              MovaVideoControls(
+                trimStartMs: widget.startMs,
+                trimEndMs: widget.endMs,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

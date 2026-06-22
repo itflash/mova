@@ -677,7 +677,23 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
       borderRadius: BorderRadius.circular(AppRadius.card),
       child: ColoredBox(
         color: Colors.black,
-        child: Chewie(controller: _chewieController!),
+        child: ChewieControllerProvider(
+          controller: _chewieController!,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Center(
+                child: AspectRatio(
+                  aspectRatio: _controller!.value.aspectRatio == 0
+                      ? 16 / 9
+                      : _controller!.value.aspectRatio,
+                  child: VideoPlayer(_controller!),
+                ),
+              ),
+              const MovaVideoControls(),
+            ],
+          ),
+        ),
       ),
     );
   }
