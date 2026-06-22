@@ -1138,7 +1138,9 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
     setState(() {
       _chewieController = ChewieController(
         videoPlayerController: controller,
-        aspectRatio: 16 / 9,
+        aspectRatio: controller.value.aspectRatio == 0
+            ? 16 / 9
+            : controller.value.aspectRatio,
         autoPlay: false,
         looping: false,
         showOptions: false,
@@ -1179,7 +1181,9 @@ class _CompositionClipPreviewState extends State<_CompositionClipPreview> {
       setState(() {
         _chewieController = ChewieController(
           videoPlayerController: controller,
-          aspectRatio: 16 / 9,
+          aspectRatio: controller.value.aspectRatio == 0
+              ? 16 / 9
+              : controller.value.aspectRatio,
           autoPlay: false,
           looping: false,
           showOptions: false,

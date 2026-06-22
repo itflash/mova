@@ -95,6 +95,56 @@ class _LibraryPageState extends State<LibraryPage> {
                     }
                   },
                 ),
+                if (isCompactMode) ...[
+                  const SizedBox(height: 8),
+                  UtilityPanel(
+                    child: Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              final visibleIds = visibleAttachments
+                                  .map((item) => item.id)
+                                  .toSet();
+                              if (_selectedAttachmentIds.length ==
+                                  visibleIds.length) {
+                                _selectedAttachmentIds.clear();
+                              } else {
+                                _selectedAttachmentIds
+                                  ..clear()
+                                  ..addAll(visibleIds);
+                              }
+                            });
+                          },
+                          icon: const Icon(Icons.select_all_rounded, size: 18),
+                          label: Text(
+                            _selectedAttachmentIds.length ==
+                                        visibleAttachments.length &&
+                                    visibleAttachments.isNotEmpty
+                                ? '取消全选'
+                                : '全选',
+                          ),
+                        ),
+                        if (_selectedAttachmentIds.isNotEmpty)
+                          FilledButton.icon(
+                            onPressed: () => _deleteSelectedAttachments(
+                              context,
+                              appState,
+                              visibleAttachments,
+                            ),
+                            icon: const Icon(
+                              Icons.delete_outline_rounded,
+                              size: 18,
+                            ),
+                            label: Text('删除 ${_selectedAttachmentIds.length}'),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 if (appState.uploadErrorMessage != null) ...[
                   UtilityPanel(
@@ -145,59 +195,6 @@ class _LibraryPageState extends State<LibraryPage> {
             _LibraryGroupedSliver(
               groups: groupAttachmentsByTask(visibleAttachments),
               previewAttachments: visibleAttachments,
-            ),
-          if (isCompactMode)
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-              sliver: SliverToBoxAdapter(
-                child: UtilityPanel(
-                  child: Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            final visibleIds = visibleAttachments
-                                .map((item) => item.id)
-                                .toSet();
-                            if (_selectedAttachmentIds.length ==
-                                visibleIds.length) {
-                              _selectedAttachmentIds.clear();
-                            } else {
-                              _selectedAttachmentIds
-                                ..clear()
-                                ..addAll(visibleIds);
-                            }
-                          });
-                        },
-                        icon: const Icon(Icons.select_all_rounded, size: 18),
-                        label: Text(
-                          _selectedAttachmentIds.length ==
-                                      visibleAttachments.length &&
-                                  visibleAttachments.isNotEmpty
-                              ? '取消全选'
-                              : '全选',
-                        ),
-                      ),
-                      if (_selectedAttachmentIds.isNotEmpty)
-                        FilledButton.icon(
-                          onPressed: () => _deleteSelectedAttachments(
-                            context,
-                            appState,
-                            visibleAttachments,
-                          ),
-                          icon: const Icon(
-                            Icons.delete_outline_rounded,
-                            size: 18,
-                          ),
-                          label: Text('删除 ${_selectedAttachmentIds.length}'),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
             ),
         ],
       ),
