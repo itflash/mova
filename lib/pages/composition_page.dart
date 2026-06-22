@@ -281,7 +281,7 @@ Future<void> _pickAndAddAttachmentVideo(
   final picked = await showAttachmentPickerSheet(
     context: context,
     state: state,
-    title: '选择素材库视频',
+    title: '选择素材库素材',
     subtitle: '从素材库选择一个视频加入剪辑。',
     kind: AttachmentKind.video,
   );
@@ -1008,12 +1008,10 @@ class _AddClipButtonsState extends State<_AddClipButtons> {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
+    return Row(
       spacing: 8,
-      runSpacing: 8,
       children: [
-        Tooltip(
-          message: '添加本地视频',
+        Expanded(
           child: FilledButton.icon(
             onPressed: _busy ? null : _addLocal,
             icon: _busy
@@ -1023,13 +1021,15 @@ class _AddClipButtonsState extends State<_AddClipButtons> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.add_rounded, size: 18),
-            label: const Text('添加视频片段'),
+            label: const Text('+本地视频'),
           ),
         ),
-        FilledButton.tonalIcon(
-          onPressed: _busy ? null : _addFromLibrary,
-          icon: const Icon(Icons.video_library_rounded, size: 18),
-          label: const Text('素材库视频'),
+        Expanded(
+          child: FilledButton.tonalIcon(
+            onPressed: _busy ? null : _addFromLibrary,
+            icon: const Icon(Icons.video_library_rounded, size: 18),
+            label: const Text('素材库'),
+          ),
         ),
       ],
     );
