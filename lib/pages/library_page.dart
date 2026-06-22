@@ -755,7 +755,7 @@ Future<void> _openCategoryManagement(BuildContext context) async {
   );
 }
 
-enum _AttachmentMenuAction { saveToGallery, copyUrl }
+enum _AttachmentMenuAction { saveToGallery, copyUrl, delete }
 
 /// 渲染按任务分组后的素材列表：
 /// - 单素材组（含非任务素材、本地导入、合成、抓帧）→ 直接渲染 _AttachmentCard
@@ -1579,6 +1579,13 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                                 label: '复制链接',
                               ),
                             ),
+                            const PopupMenuItem<_AttachmentMenuAction>(
+                              value: _AttachmentMenuAction.delete,
+                              child: _AttachmentMenuRow(
+                                icon: Icons.delete_outline_rounded,
+                                label: '删除',
+                              ),
+                            ),
                           ],
                           onSelected: (action) {
                             switch (action) {
@@ -1590,6 +1597,8 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                                 );
                               case _AttachmentMenuAction.copyUrl:
                                 _copyAttachmentUrl(context, state, attachment);
+                              case _AttachmentMenuAction.delete:
+                                _deleteAttachment(context, state, attachment);
                             }
                           },
                         ),
@@ -1597,10 +1606,7 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      [
-                        compactFileName(attachment.fileName),
-                        _formatCompactDateTime(attachment.createdAt),
-                      ].join(' · '),
+                      _formatCompactDateTime(attachment.createdAt),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: metaTextStyle,
@@ -1649,22 +1655,11 @@ class _AttachmentCardState extends State<_AttachmentCard> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _AttachmentActionButton(
-                icon: Icons.visibility_outlined,
-                label: '预览',
-                onPressed: canAccess
-                    ? () => showAttachmentPreviewSheet(
-                        context,
-                        attachment,
-                        attachments: widget.previewAttachments,
-                      )
-                    : null,
-              ),
               if (attachment.kind == AttachmentKind.video) ...[
                 _AttachmentActionButton(
                   icon: Icons.content_cut_rounded,
-                  label: '添加到剪辑',
-                  tooltip: '添加到剪辑',
+                  label: '剪辑',
+                  tooltip: '剪辑',
                   onPressed: canAccess
                       ? () => _addAttachmentVideoToComposition(
                           context,
@@ -1685,13 +1680,6 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                       : null,
                 ),
               ],
-              _AttachmentActionButton(
-                icon: Icons.delete_outline_rounded,
-                label: '删除',
-                onPressed: canAccess
-                    ? () => _deleteAttachment(context, state, attachment)
-                    : null,
-              ),
               _AttachmentActionButton(
                 icon: _showTagEditor
                     ? Icons.keyboard_arrow_up_rounded
