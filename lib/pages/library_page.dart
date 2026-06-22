@@ -496,7 +496,7 @@ class _CompactAttachmentRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  attachment.fileName,
+                  _formatCompactDateTime(attachment.createdAt),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
@@ -514,10 +514,6 @@ class _CompactAttachmentRow extends StatelessWidget {
                     ),
                     Text(
                       state.storageProviderLabel(attachment.storageProvider),
-                      style: theme.textTheme.labelSmall,
-                    ),
-                    Text(
-                      _formatCompactDateTime(attachment.createdAt),
                       style: theme.textTheme.labelSmall,
                     ),
                   ],
