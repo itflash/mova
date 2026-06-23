@@ -11,6 +11,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../app/models.dart';
@@ -24,11 +26,19 @@ const int kPreviewCacheMaxBytes = 2 * 1024 * 1024 * 1024;
 /// 改用 provider + bucket + objectKey + fileSizeBytes 的组合做 md5，
 /// 保证签名 URL 刷新后仍命中同一份缓存。
 String previewCacheKey(Attachment attachment) {
-  final raw =
-      '${attachment.storageProvider.name}'
-      ':${attachment.storageBucket ?? ''}'
-      ':${attachment.objectKey ?? ''}'
-      ':${attachment.fileSizeBytes ?? 0}';
+  return previewCacheKeyForValues([
+    attachment.storageProvider.name,
+    attachment.storageBucket,
+    attachment.objectKey,
+    attachment.fileSizeBytes ?? 0,
+  ]);
+}
+
+/// 生成通用预览缓存 key。
+///
+/// 任务结果这类没有 [Attachment] 元数据的媒体，也可以用稳定业务标识生成 key。
+String previewCacheKeyForValues(Iterable<Object?> values) {
+  final raw = values.map((value) => value?.toString() ?? '').join(':');
   return md5.convert(utf8.encode(raw)).toString();
 }
 
@@ -43,13 +53,16 @@ class PreviewCacheService {
 
   /// 视频兜底缓存子目录名。
   static const String _videoCacheDirName = 'preview-video';
+
   /// CachedNetworkImage 的磁盘缓存目录名（flutter_cache_manager 默认）。
   static const String _cachedImageDirName = 'libCachedImageData';
+
   /// 缩略图缓存子目录名（与 attachment_media.dart 中 _cachedVideoThumbnail 一致）。
   static const String _thumbsCacheDirName = 'mova-thumbs';
 
- Directory? _videoCacheDir;
- /// 获取视频兜底缓存目录（懒初始化）。
+  Directory? _videoCacheDir;
+
+  /// 获取视频兜底缓存目录（懒初始化）。
   Future<Directory> _videoCacheDirectory() async {
     final cached = _videoCacheDir;
     if (cached != null && cached.existsSync()) return cached;
@@ -61,7 +74,6 @@ class PreviewCacheService {
     _videoCacheDir = dir;
     return dir;
   }
-
 
   /// 获取 CachedNetworkImage 的磁盘缓存目录。
   Future<Directory?> _cachedImageCacheDirectory() async {
@@ -82,11 +94,78 @@ class PreviewCacheService {
       stable.createSync(recursive: true);
     }
     dirs.add(stable);
-   final legacy = Directory('${Directory.systemTemp.path}/$_thumbsCacheDirName');
-   if (legacy.existsSync()) {
-     dirs.add(legacy);
-   }
-   return dirs;
+    final legacy = Directory(
+      '${Directory.systemTemp.path}/$_thumbsCacheDirName',
+    );
+    if (legacy.existsSync()) {
+      dirs.add(legacy);
+    }
+    return dirs;
+  }
+
+  /// 用 ffmpeg 给视频抽一帧作为缩略图，结果按稳定 [cacheKey] 缓存到磁盘。
+  ///
+  /// 同一视频重复进入列表时直接读已有 jpg，不重复抽帧，也不初始化视频播放器。
+  Future<String?> cachedVideoThumbnail(
+    String videoUrl, {
+    required String cacheKey,
+  }) async {
+    final thumbDirs = await _thumbsCacheDirectories();
+    final stableDir = thumbDirs.first;
+    final thumbPath = '${stableDir.path}/$cacheKey.jpg';
+    final thumbFile = File(thumbPath);
+    if (thumbFile.existsSync() && thumbFile.lengthSync() > 0) {
+      await thumbFile.setLastModified(DateTime.now());
+      return thumbPath;
+    }
+
+    // 兼容旧版：旧缓存按签名 URL 的 md5 哈希命名，命中后迁移到稳定 key。
+    final legacyHash = md5.convert(utf8.encode(videoUrl)).toString();
+    for (final dir in thumbDirs) {
+      final legacyPath = '${dir.path}/$legacyHash.jpg';
+      final legacyFile = File(legacyPath);
+      if (legacyFile.existsSync() && legacyFile.lengthSync() > 0) {
+        if (dir.path == stableDir.path) {
+          try {
+            legacyFile.renameSync(thumbPath);
+            return thumbPath;
+          } catch (_) {
+            return legacyPath;
+          }
+        }
+        return legacyPath;
+      }
+    }
+
+    final args = [
+      '-y',
+      '-ss',
+      '1',
+      '-i',
+      videoUrl,
+      '-frames:v',
+      '1',
+      '-vf',
+      'scale=480:-2',
+      '-q:v',
+      '4',
+      thumbPath,
+    ];
+    final session = await FFmpegKit.executeWithArguments(
+      args,
+    ).timeout(const Duration(seconds: 8));
+    final returnCode = await session.getReturnCode();
+    if (ReturnCode.isSuccess(returnCode) &&
+        thumbFile.existsSync() &&
+        thumbFile.lengthSync() > 0) {
+      return thumbPath;
+    }
+    if (thumbFile.existsSync()) {
+      try {
+        thumbFile.deleteSync();
+      } catch (_) {}
+    }
+    return null;
   }
 
   /// 返回视频兜底缓存文件路径（若存在）。
@@ -211,7 +290,9 @@ class PreviewCacheService {
       var total = files.fold<int>(0, (sum, f) => sum + f.lengthSync());
       if (total <= kPreviewCacheMaxBytes) return;
       // 按 mtime 升序（最旧在前）排序，逐个删除直至达标。
-      files.sort((a, b) => a.statSync().modified.compareTo(b.statSync().modified));
+      files.sort(
+        (a, b) => a.statSync().modified.compareTo(b.statSync().modified),
+      );
       for (final file in files) {
         if (total <= kPreviewCacheMaxBytes) break;
         final size = file.lengthSync();

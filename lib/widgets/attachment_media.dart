@@ -1,18 +1,12 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
-import 'dart:convert';
-
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
 import '../app/spacing.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:video_player/video_player.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 
 import '../app/app_scope.dart';
 import '../app/app_state.dart';
@@ -1039,7 +1033,7 @@ class _ResolvedAttachmentVideoThumbState
       // 用稳定的 previewCacheKey 做缓存文件名，避免签名 URL 刷新后
       // hash 变化导致缓存失效、每次滚动都重新抽帧。
       final stableKey = previewCacheKey(widget.attachment);
-      final cached = await _cachedVideoThumbnail(
+      final cached = await PreviewCacheService.instance.cachedVideoThumbnail(
         _resolvedUrl!,
         cacheKey: stableKey,
       );
@@ -1264,75 +1258,4 @@ class _PreviewFallback extends StatelessWidget {
       ),
     );
   }
-}
-
-/// 用 ffmpeg 给视频抽一帧首帧作为缩略图，结果按稳定 cacheKey 缓存到磁盘。
-/// 同一视频重复滚动进入列表时直接读已有 jpg，不重复抽帧，避免卡顿。
-/// 抽帧失败（网络异常、格式不支持等）返回 null，调用方降级到 fallback 占位图。
-///
-/// 缓存文件名用传入的稳定 [cacheKey]（由 previewCacheKey 生成，基于
-/// storageProvider+bucket+objectKey+fileSizeBytes），而非签名 URL 的哈希，
-/// 这样私有空间签名 URL 过期刷新后仍命中同一份缩略图。
-Future<String?> _cachedVideoThumbnail(
-  String videoUrl, {
-  required String cacheKey,
-}) async {
-  // 缩略图缓存放 applicationSupportDirectory（稳定目录），
-  // 同时检查 systemTemp 旧目录以兼容历史缓存数据。
-  final stableDir = Directory(
-    '${(await getApplicationSupportDirectory()).path}/mova-thumbs',
-  );
-  if (!stableDir.existsSync()) {
-    stableDir.createSync(recursive: true);
-  }
-  final thumbPath = '${stableDir.path}/$cacheKey.jpg';
-  final thumbFile = File(thumbPath);
-  if (thumbFile.existsSync() && thumbFile.lengthSync() > 0) {
-    return thumbPath;
-  }
-  // 兼容旧版：旧缓存按签名 URL 的 md5 哈希命名，命中后直接复用。
-  final legacyHash = md5.convert(utf8.encode(videoUrl)).toString();
-  final legacyStablePath = '${stableDir.path}/$legacyHash.jpg';
-  final legacyStableFile = File(legacyStablePath);
-  if (legacyStableFile.existsSync() && legacyStableFile.lengthSync() > 0) {
-    // 迁移到新的稳定 key 命名，后续命中更快。
-    legacyStableFile.renameSync(thumbPath);
-    return thumbPath;
-  }
-  final legacyTempPath =
-      '${Directory.systemTemp.path}/mova-thumbs/$legacyHash.jpg';
-  final legacyTempFile = File(legacyTempPath);
-  if (legacyTempFile.existsSync() && legacyTempFile.lengthSync() > 0) {
-    return legacyTempPath;
-  }
-  // -ss 1 seek 到 1 秒（输入前，快进），-frames:v 1 只取一帧，
-  // scale=480:-2 缩放到宽 480、高度自动对齐偶数，-q:v 4 控制质量/体积。
-  final args = [
-    '-y',
-    '-ss',
-    '1',
-    '-i',
-    videoUrl,
-    '-frames:v',
-    '1',
-    '-vf',
-    'scale=480:-2',
-    '-q:v',
-    '4',
-    thumbPath,
-  ];
-  final session = await FFmpegKit.executeWithArguments(
-    args,
-  ).timeout(const Duration(seconds: 8));
-  final returnCode = await session.getReturnCode();
-  if (ReturnCode.isSuccess(returnCode) &&
-      thumbFile.existsSync() &&
-      thumbFile.lengthSync() > 0) {
-    return thumbPath;
-  }
-  // 抽帧失败，清理可能产生的空文件。
-  if (thumbFile.existsSync()) {
-    thumbFile.deleteSync();
-  }
-  return null;
 }
