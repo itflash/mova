@@ -88,40 +88,63 @@ class _LibraryPageState extends State<LibraryPage> {
                 const SectionLabel('素材列表'),
                 _LibraryViewToolbar(
                   mode: appState.libraryViewMode,
-                  selectedCount: _selectedAttachmentIds.length,
-                  visibleCount: visibleAttachments.length,
                   onModeChanged: (mode) {
                     appState.setLibraryViewMode(mode);
                     if (mode != LibraryViewMode.compact) {
                       setState(_selectedAttachmentIds.clear);
                     }
                   },
-                  onSelectAll: isCompactMode
-                      ? () {
-                          setState(() {
-                            final visibleIds = visibleAttachments
-                                .map((item) => item.id)
-                                .toSet();
-                            if (_selectedAttachmentIds.length ==
-                                visibleIds.length) {
-                              _selectedAttachmentIds.clear();
-                            } else {
-                              _selectedAttachmentIds
-                                ..clear()
-                                ..addAll(visibleIds);
-                            }
-                          });
-                        }
-                      : null,
-                  onDeleteSelected:
-                      isCompactMode && _selectedAttachmentIds.isNotEmpty
-                      ? () => _deleteSelectedAttachments(
-                          context,
-                          appState,
-                          visibleAttachments,
-                        )
-                      : null,
                 ),
+                if (isCompactMode) ...[
+                  const SizedBox(height: 8),
+                  UtilityPanel(
+                    child: Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              final visibleIds = visibleAttachments
+                                  .map((item) => item.id)
+                                  .toSet();
+                              if (_selectedAttachmentIds.length ==
+                                  visibleIds.length) {
+                                _selectedAttachmentIds.clear();
+                              } else {
+                                _selectedAttachmentIds
+                                  ..clear()
+                                  ..addAll(visibleIds);
+                              }
+                            });
+                          },
+                          icon: const Icon(Icons.select_all_rounded, size: 18),
+                          label: Text(
+                            _selectedAttachmentIds.length ==
+                                        visibleAttachments.length &&
+                                    visibleAttachments.isNotEmpty
+                                ? '取消全选'
+                                : '全选',
+                          ),
+                        ),
+                        if (_selectedAttachmentIds.isNotEmpty)
+                          FilledButton.icon(
+                            onPressed: () => _deleteSelectedAttachments(
+                              context,
+                              appState,
+                              visibleAttachments,
+                            ),
+                            icon: const Icon(
+                              Icons.delete_outline_rounded,
+                              size: 18,
+                            ),
+                            label: Text('删除 ${_selectedAttachmentIds.length}'),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 if (appState.uploadErrorMessage != null) ...[
                   UtilityPanel(
@@ -167,8 +190,8 @@ class _LibraryPageState extends State<LibraryPage> {
                 },
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
               ),
-            )
-          else
+            ),
+          if (!isCompactMode)
             _LibraryGroupedSliver(
               groups: groupAttachmentsByTask(visibleAttachments),
               previewAttachments: visibleAttachments,
@@ -376,21 +399,10 @@ class _LibraryFilterPanelState extends State<_LibraryFilterPanel> {
 }
 
 class _LibraryViewToolbar extends StatelessWidget {
-  const _LibraryViewToolbar({
-    required this.mode,
-    required this.selectedCount,
-    required this.visibleCount,
-    required this.onModeChanged,
-    required this.onSelectAll,
-    required this.onDeleteSelected,
-  });
+  const _LibraryViewToolbar({required this.mode, required this.onModeChanged});
 
   final LibraryViewMode mode;
-  final int selectedCount;
-  final int visibleCount;
   final ValueChanged<LibraryViewMode> onModeChanged;
-  final VoidCallback? onSelectAll;
-  final VoidCallback? onDeleteSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -417,22 +429,6 @@ class _LibraryViewToolbar extends StatelessWidget {
             emptySelectionAllowed: false,
             onSelectionChanged: (selected) => onModeChanged(selected.first),
           ),
-          if (mode == LibraryViewMode.compact) ...[
-            OutlinedButton.icon(
-              onPressed: visibleCount == 0 ? null : onSelectAll,
-              icon: const Icon(Icons.select_all_rounded, size: 18),
-              label: Text(
-                selectedCount == visibleCount && visibleCount > 0
-                    ? '取消全选'
-                    : '全选',
-              ),
-            ),
-            FilledButton.icon(
-              onPressed: onDeleteSelected,
-              icon: const Icon(Icons.delete_outline_rounded, size: 18),
-              label: Text(selectedCount == 0 ? '删除' : '删除 $selectedCount'),
-            ),
-          ],
         ],
       ),
     );
@@ -461,6 +457,7 @@ class _CompactAttachmentRow extends StatelessWidget {
     return UtilityPanel(
       padding: const EdgeInsets.all(10),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Checkbox(
             value: selected,
@@ -496,7 +493,16 @@ class _CompactAttachmentRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  attachment.fileName,
+                  _formatCompactDateTime(attachment.createdAt),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _roleLabel(attachment.role),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
@@ -514,10 +520,6 @@ class _CompactAttachmentRow extends StatelessWidget {
                     ),
                     Text(
                       state.storageProviderLabel(attachment.storageProvider),
-                      style: theme.textTheme.labelSmall,
-                    ),
-                    Text(
-                      _formatCompactDateTime(attachment.createdAt),
                       style: theme.textTheme.labelSmall,
                     ),
                   ],
@@ -566,7 +568,9 @@ class _LibraryEmptyState extends StatelessWidget {
         children: [
           Text(
             hasFilters ? '没有匹配结果' : '素材库还是空的',
-            style: Theme.of(context).textTheme.titleMedium,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(height: 1.2),
           ),
           const SizedBox(height: 6),
           Text(
@@ -755,7 +759,7 @@ Future<void> _openCategoryManagement(BuildContext context) async {
   );
 }
 
-enum _AttachmentMenuAction { saveToGallery, copyUrl }
+enum _AttachmentMenuAction { saveToGallery, copyUrl, delete }
 
 /// 渲染按任务分组后的素材列表：
 /// - 单素材组（含非任务素材、本地导入、合成、抓帧）→ 直接渲染 _AttachmentCard
@@ -1579,6 +1583,13 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                                 label: '复制链接',
                               ),
                             ),
+                            const PopupMenuItem<_AttachmentMenuAction>(
+                              value: _AttachmentMenuAction.delete,
+                              child: _AttachmentMenuRow(
+                                icon: Icons.delete_outline_rounded,
+                                label: '删除',
+                              ),
+                            ),
                           ],
                           onSelected: (action) {
                             switch (action) {
@@ -1590,17 +1601,15 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                                 );
                               case _AttachmentMenuAction.copyUrl:
                                 _copyAttachmentUrl(context, state, attachment);
+                              case _AttachmentMenuAction.delete:
+                                _deleteAttachment(context, state, attachment);
                             }
                           },
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
                     Text(
-                      [
-                        compactFileName(attachment.fileName),
-                        _formatCompactDateTime(attachment.createdAt),
-                      ].join(' · '),
+                      _formatCompactDateTime(attachment.createdAt),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: metaTextStyle,
@@ -1649,22 +1658,11 @@ class _AttachmentCardState extends State<_AttachmentCard> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _AttachmentActionButton(
-                icon: Icons.visibility_outlined,
-                label: '预览',
-                onPressed: canAccess
-                    ? () => showAttachmentPreviewSheet(
-                        context,
-                        attachment,
-                        attachments: widget.previewAttachments,
-                      )
-                    : null,
-              ),
               if (attachment.kind == AttachmentKind.video) ...[
                 _AttachmentActionButton(
                   icon: Icons.content_cut_rounded,
-                  label: '添加到剪辑',
-                  tooltip: '添加到剪辑',
+                  label: '剪辑',
+                  tooltip: '剪辑',
                   onPressed: canAccess
                       ? () => _addAttachmentVideoToComposition(
                           context,
@@ -1685,13 +1683,6 @@ class _AttachmentCardState extends State<_AttachmentCard> {
                       : null,
                 ),
               ],
-              _AttachmentActionButton(
-                icon: Icons.delete_outline_rounded,
-                label: '删除',
-                onPressed: canAccess
-                    ? () => _deleteAttachment(context, state, attachment)
-                    : null,
-              ),
               _AttachmentActionButton(
                 icon: _showTagEditor
                     ? Icons.keyboard_arrow_up_rounded
@@ -1807,21 +1798,6 @@ class _AttachmentCardState extends State<_AttachmentCard> {
     }
   }
 
-  String _roleLabel(AttachmentRole role) {
-    switch (role) {
-      case AttachmentRole.firstFrame:
-        return '首帧图';
-      case AttachmentRole.lastFrame:
-        return '尾帧图';
-      case AttachmentRole.referenceImage:
-        return '参考图';
-      case AttachmentRole.referenceVideo:
-        return '参考视频';
-      case AttachmentRole.referenceAudio:
-        return '参考音频';
-    }
-  }
-
   String _statusLabel(AttachmentStatus status) {
     switch (status) {
       case AttachmentStatus.queued:
@@ -1874,6 +1850,21 @@ class _AttachmentCardState extends State<_AttachmentCard> {
       case AttachmentLocalStatus.error:
         return scheme.error;
     }
+  }
+}
+
+String _roleLabel(AttachmentRole role) {
+  switch (role) {
+    case AttachmentRole.firstFrame:
+      return '首帧图';
+    case AttachmentRole.lastFrame:
+      return '尾帧图';
+    case AttachmentRole.referenceImage:
+      return '参考图';
+    case AttachmentRole.referenceVideo:
+      return '参考视频';
+    case AttachmentRole.referenceAudio:
+      return '参考音频';
   }
 }
 
@@ -1981,26 +1972,25 @@ class _AttachmentLabelDisplay extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(AppRadius.control),
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(height: 1.2),
             ),
-            const SizedBox(width: 8),
-            Icon(
-              Icons.edit_outlined,
-              size: 16,
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 8),
+          Icon(
+            Icons.edit_outlined,
+            size: 16,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ],
       ),
     );
   }

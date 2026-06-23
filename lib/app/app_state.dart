@@ -781,7 +781,10 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<String> _persistCompositionVideo(String sourceUri, String fileName) async {
+  Future<String> _persistCompositionVideo(
+    String sourceUri,
+    String fileName,
+  ) async {
     final sourcePath = sourceUri.startsWith('file://')
         ? Uri.tryParse(sourceUri)?.path ?? sourceUri
         : sourceUri;
@@ -3550,10 +3553,16 @@ class AppState extends ChangeNotifier {
   }
 
   String _cleanError(Object error) {
-    final message = error
-        .toString()
-        .replaceFirst('Exception: ', '')
-        .replaceFirst('ApiClientException: ', '');
+    final message = switch (error) {
+      PlatformException(message: final platformMessage?) => platformMessage,
+      _ =>
+        error
+            .toString()
+            .replaceFirst('Exception: ', '')
+            .replaceFirst('ApiClientException: ', '')
+            .replaceFirst(RegExp(r'^PlatformException\([^,]+,\s*'), '')
+            .replaceFirst(RegExp(r',\s*null,\s*null\)$'), ''),
+    };
     if (message.contains('InvalidAccessKeyId')) {
       return '存储配置无效：Access Key 不存在或填写错误，请到设置页检查当前存储配置。';
     }

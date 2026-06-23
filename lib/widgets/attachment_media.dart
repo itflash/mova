@@ -644,10 +644,10 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
         label: _fallbackStatus == _PreviewFallbackStatus.downloading
             ? '正在下载 $_downloadProgress%'
             : _fallbackStatus == _PreviewFallbackStatus.preparing
-                ? '正在准备预览'
-                : _fallbackStatus == _PreviewFallbackStatus.failed
-                    ? '预览准备失败'
-                    : widget.label,
+            ? '正在准备预览'
+            : _fallbackStatus == _PreviewFallbackStatus.failed
+            ? '预览准备失败'
+            : widget.label,
         progress: _fallbackStatus == _PreviewFallbackStatus.downloading
             ? _downloadProgress / 100.0
             : null,
@@ -677,12 +677,7 @@ class _PreviewVideoPlayerState extends State<PreviewVideoPlayer> {
       borderRadius: BorderRadius.circular(AppRadius.card),
       child: ColoredBox(
         color: Colors.black,
-        child: AspectRatio(
-          aspectRatio: _controller!.value.aspectRatio == 0
-              ? 16 / 9
-              : _controller!.value.aspectRatio,
-          child: Chewie(controller: _chewieController!),
-        ),
+        child: Chewie(controller: _chewieController!),
       ),
     );
   }
@@ -748,8 +743,13 @@ class _MovaVideoControlsState extends State<MovaVideoControls> {
         ? widget.trimEndMs!.toDouble()
         : fullDuration.inMilliseconds.toDouble());
     final trimDuration = trimEnd - trimStart;
-    final fullPos = value.position > fullDuration ? fullDuration : value.position;
-    final relPos = (fullPos.inMilliseconds.toDouble() - trimStart).clamp(0.0, trimDuration);
+    final fullPos = value.position > fullDuration
+        ? fullDuration
+        : value.position;
+    final relPos = (fullPos.inMilliseconds.toDouble() - trimStart).clamp(
+      0.0,
+      trimDuration,
+    );
     final durationMs = trimDuration.clamp(1.0, double.infinity);
 
     return Stack(
@@ -760,16 +760,6 @@ class _MovaVideoControlsState extends State<MovaVideoControls> {
             onTap: _togglePlay,
           ),
         ),
-        if (!value.isPlaying)
-          Center(
-            child: _VideoRoundButton(
-              tooltip: '播放',
-              icon: Icons.play_arrow_rounded,
-              onPressed: _togglePlay,
-              size: 50,
-              iconSize: 30,
-            ),
-          ),
         Positioned(
           left: 0,
           right: 0,
@@ -786,37 +776,46 @@ class _MovaVideoControlsState extends State<MovaVideoControls> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    _VideoRoundButton(
-                      tooltip: value.isPlaying ? '暂停' : '播放',
-                      icon: value.isPlaying
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                      onPressed: _togglePlay,
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      '${_formatDuration(Duration(milliseconds: relPos.round()))} / ${_formatDuration(Duration(milliseconds: trimDuration.round()))}',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
+                SizedBox(
+                  width: double.infinity,
+                  child: Row(
+                    children: [
+                      _VideoRoundButton(
+                        tooltip: value.isPlaying ? '暂停' : '播放',
+                        icon: value.isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        onPressed: _togglePlay,
                       ),
-                    ),
-                    const Spacer(),
-                    _VideoRoundButton(
-                      tooltip: chewieController.isFullScreen ? '退出全屏' : '全屏',
-                      onPressed: chewieController.toggleFullScreen,
-                      icon: chewieController.isFullScreen
-                          ? Icons.fullscreen_exit_rounded
-                          : Icons.fullscreen_rounded,
-                      size: 40,
-                      iconSize: 22,
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${_formatDuration(Duration(milliseconds: relPos.round()))} / ${_formatDuration(Duration(milliseconds: trimDuration.round()))}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _VideoRoundButton(
+                        tooltip: chewieController.isFullScreen ? '退出全屏' : '全屏',
+                        onPressed: chewieController.toggleFullScreen,
+                        icon: chewieController.isFullScreen
+                            ? Icons.fullscreen_exit_rounded
+                            : Icons.fullscreen_rounded,
+                        size: 40,
+                        iconSize: 22,
+                      ),
+                    ],
+                  ),
                 ),
                 SliderTheme(
                   data: SliderTheme.of(context).copyWith(
+                    padding: EdgeInsets.zero,
                     trackHeight: 3,
                     activeTrackColor: Theme.of(context).colorScheme.primary,
                     inactiveTrackColor: Colors.white30,
@@ -832,6 +831,7 @@ class _MovaVideoControlsState extends State<MovaVideoControls> {
                     ),
                   ),
                   child: Slider(
+                    padding: EdgeInsets.zero,
                     min: 0,
                     max: durationMs,
                     value: relPos,
@@ -1036,7 +1036,13 @@ class _ResolvedAttachmentVideoThumbState
         return;
       }
       _resolvedUrl = url.trim();
-      final cached = await _cachedVideoThumbnail(_resolvedUrl!);
+      // 用稳定的 previewCacheKey 做缓存文件名，避免签名 URL 刷新后
+      // hash 变化导致缓存失效、每次滚动都重新抽帧。
+      final stableKey = previewCacheKey(widget.attachment);
+      final cached = await _cachedVideoThumbnail(
+        _resolvedUrl!,
+        cacheKey: stableKey,
+      );
       if (!mounted) return;
       setState(() {
         _thumbPath = cached;
@@ -1156,12 +1162,7 @@ class _FallbackThumb extends StatelessWidget {
 }
 
 /// 视频兜底下载的状态，用于 UI 展示准备进度。
-enum _PreviewFallbackStatus {
-  idle,
-  preparing,
-  downloading,
-  failed,
-}
+enum _PreviewFallbackStatus { idle, preparing, downloading, failed }
 
 /// 预览状态占位框：展示图标 + 文字，可选进度条（兜底下载时用）。
 /// 高度与 _PreviewFallback 保持一致（280），确保切换状态时布局不跳动。
@@ -1265,10 +1266,17 @@ class _PreviewFallback extends StatelessWidget {
   }
 }
 
-/// 用 ffmpeg 给视频抽一帧首帧作为缩略图，结果按 url 哈希缓存到系统临时目录。
+/// 用 ffmpeg 给视频抽一帧首帧作为缩略图，结果按稳定 cacheKey 缓存到磁盘。
 /// 同一视频重复滚动进入列表时直接读已有 jpg，不重复抽帧，避免卡顿。
 /// 抽帧失败（网络异常、格式不支持等）返回 null，调用方降级到 fallback 占位图。
-Future<String?> _cachedVideoThumbnail(String videoUrl) async {
+///
+/// 缓存文件名用传入的稳定 [cacheKey]（由 previewCacheKey 生成，基于
+/// storageProvider+bucket+objectKey+fileSizeBytes），而非签名 URL 的哈希，
+/// 这样私有空间签名 URL 过期刷新后仍命中同一份缩略图。
+Future<String?> _cachedVideoThumbnail(
+  String videoUrl, {
+  required String cacheKey,
+}) async {
   // 缩略图缓存放 applicationSupportDirectory（稳定目录），
   // 同时检查 systemTemp 旧目录以兼容历史缓存数据。
   final stableDir = Directory(
@@ -1277,18 +1285,25 @@ Future<String?> _cachedVideoThumbnail(String videoUrl) async {
   if (!stableDir.existsSync()) {
     stableDir.createSync(recursive: true);
   }
-  final hash = md5.convert(utf8.encode(videoUrl)).toString();
-  final thumbPath = '${stableDir.path}/$hash.jpg';
+  final thumbPath = '${stableDir.path}/$cacheKey.jpg';
   final thumbFile = File(thumbPath);
   if (thumbFile.existsSync() && thumbFile.lengthSync() > 0) {
     return thumbPath;
   }
-  // 兼容旧目录：systemTemp 下已有缓存直接复用。
-  final legacyPath =
-      '${Directory.systemTemp.path}/mova-thumbs/$hash.jpg';
-  final legacyFile = File(legacyPath);
-  if (legacyFile.existsSync() && legacyFile.lengthSync() > 0) {
-    return legacyPath;
+  // 兼容旧版：旧缓存按签名 URL 的 md5 哈希命名，命中后直接复用。
+  final legacyHash = md5.convert(utf8.encode(videoUrl)).toString();
+  final legacyStablePath = '${stableDir.path}/$legacyHash.jpg';
+  final legacyStableFile = File(legacyStablePath);
+  if (legacyStableFile.existsSync() && legacyStableFile.lengthSync() > 0) {
+    // 迁移到新的稳定 key 命名，后续命中更快。
+    legacyStableFile.renameSync(thumbPath);
+    return thumbPath;
+  }
+  final legacyTempPath =
+      '${Directory.systemTemp.path}/mova-thumbs/$legacyHash.jpg';
+  final legacyTempFile = File(legacyTempPath);
+  if (legacyTempFile.existsSync() && legacyTempFile.lengthSync() > 0) {
+    return legacyTempPath;
   }
   // -ss 1 seek 到 1 秒（输入前，快进），-frames:v 1 只取一帧，
   // scale=480:-2 缩放到宽 480、高度自动对齐偶数，-q:v 4 控制质量/体积。

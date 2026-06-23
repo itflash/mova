@@ -59,7 +59,47 @@ void main() {
     expect(find.byTooltip('上移'), findsOneWidget);
     expect(find.byTooltip('下移'), findsOneWidget);
     expect(find.byTooltip('删除'), findsOneWidget);
-    expect(find.text('转场'), findsOneWidget);
+    expect(find.textContaining('结尾片段'), findsOneWidget);
+    expect(find.text('转到下一个片段'), findsNothing);
+  });
+
+  testWidgets('shows transition control only before another clip', (
+    tester,
+  ) async {
+    final state = AppState()
+      ..addCompositionClip(
+        const CompositionClip.local(
+          id: 'clip-1',
+          label: 'A.mp4',
+          localUri: 'file:///tmp/a.mp4',
+          fileName: 'A.mp4',
+          startMs: 0,
+          endMs: 15000,
+        ),
+      )
+      ..addCompositionClip(
+        const CompositionClip.local(
+          id: 'clip-2',
+          label: 'B.mp4',
+          localUri: 'file:///tmp/b.mp4',
+          fileName: 'B.mp4',
+          startMs: 0,
+          endMs: 15000,
+        ),
+      );
+
+    await tester.pumpWidget(
+      AppScope(
+        state: state,
+        child: const MaterialApp(home: HomeShell()),
+      ),
+    );
+
+    await tester.tap(find.text('剪辑'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('转到下一个片段'), findsOneWidget);
+    expect(find.textContaining('结尾片段'), findsOneWidget);
   });
 
   testWidgets('opens clip trim sheet with start and end controls', (
@@ -221,7 +261,7 @@ void main() {
 
     expect(state.compositionExportResult?.fileName, 'out.mp4');
     expect(find.text('已导出：out.mp4'), findsOneWidget);
-    expect(find.text('保存到相册/文件'), findsOneWidget);
+    expect(find.text('保存相册'), findsOneWidget);
     expect(find.text('导入素材库'), findsOneWidget);
   });
 
