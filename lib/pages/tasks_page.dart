@@ -9,6 +9,7 @@ import 'package:video_player/video_player.dart';
 import '../app/app_scope.dart';
 import '../app/app_state.dart';
 import '../app/models.dart';
+import '../services/preview_cache_service.dart';
 import 'home_shell.dart';
 import 'image_create_page.dart';
 import '../widgets/attachment_media.dart';
@@ -96,36 +97,36 @@ class TasksPage extends StatelessWidget {
     await copyToClipboard(context, text: value, message: '已复制$label');
   }
 
- Future<void> _openMedia(BuildContext context, TaskRecord task) async {
-   final uri = task.localResourceUri ?? task.videoUrl;
-   if (uri == null || uri.trim().isEmpty) {
-     _showToast(context, '当前没有可打开的媒体');
-     return;
-   }
+  Future<void> _openMedia(BuildContext context, TaskRecord task) async {
+    final uri = task.localResourceUri ?? task.videoUrl;
+    if (uri == null || uri.trim().isEmpty) {
+      _showToast(context, '当前没有可打开的媒体');
+      return;
+    }
 
     final effectiveUri = _resolvePlayableUri(uri, task.videoUrl);
-   if (effectiveUri == null || effectiveUri.trim().isEmpty) {
-     _showToast(context, '当前没有可打开的媒体');
-     return;
-   }
+    if (effectiveUri == null || effectiveUri.trim().isEmpty) {
+      _showToast(context, '当前没有可打开的媒体');
+      return;
+    }
 
-   await showModalBottomSheet<void>(
-     context: context,
-     isScrollControlled: true,
-     useSafeArea: true,
-     showDragHandle: true,
-     backgroundColor: Theme.of(context).colorScheme.surface,
-     shape: const RoundedRectangleBorder(
-       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-     ),
-    builder: (context) => _TaskVideoPreviewSheet(
-       url: effectiveUri,
-      label: task.localFileName ?? task.videoUrl ?? '视频结果',
-    ),
-  );
-}
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) => _TaskVideoPreviewSheet(
+        url: effectiveUri,
+        label: task.localFileName ?? task.videoUrl ?? '视频结果',
+      ),
+    );
+  }
 
- String? _resolvePlayableUri(String? localUri, String? videoUrl) {
+  String? _resolvePlayableUri(String? localUri, String? videoUrl) {
     if (localUri == null || localUri.trim().isEmpty) return videoUrl;
     final trimmed = localUri.trim();
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
@@ -687,7 +688,9 @@ class _ResultPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final helper = const TasksPage();
-    final mediaUrl = TasksPage()._resolvePlayableUri(task.localResourceUri, task.videoUrl) ?? task.videoUrl;
+    final mediaUrl =
+        TasksPage()._resolvePlayableUri(task.localResourceUri, task.videoUrl) ??
+        task.videoUrl;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -720,6 +723,11 @@ class _ResultPanel extends StatelessWidget {
                 height: 124,
                 child: _TaskVideoPreview(
                   url: mediaUrl,
+                  cacheKey: previewCacheKeyForValues([
+                    'task-result',
+                    task.id,
+                    task.videoUrl ?? mediaUrl,
+                  ]),
                   label: task.localFileName ?? '视频结果',
                 ),
               ),
@@ -1441,29 +1449,28 @@ class _TaskAttachmentThumb extends StatelessWidget {
                   radius: radius,
                   overlayLabel: '',
                 ),
-                Positioned(
-                  right: badgeInset,
-                  bottom: badgeInset,
-                  child: Container(
-                    width: badgeSize,
-                    height: badgeSize,
-                    decoration: BoxDecoration(
-                      color: colorScheme.surface.withValues(
-                        alpha: compact ? 0.84 : 0.92,
+                if (attachment.kind != AttachmentKind.video)
+                  Positioned(
+                    right: badgeInset,
+                    bottom: badgeInset,
+                    child: Container(
+                      width: badgeSize,
+                      height: badgeSize,
+                      decoration: BoxDecoration(
+                        color: colorScheme.surface.withValues(
+                          alpha: compact ? 0.84 : 0.92,
+                        ),
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
                       ),
-                      borderRadius: BorderRadius.circular(AppRadius.pill),
-                    ),
-                    child: Icon(
-                      attachment.kind == AttachmentKind.video
-                          ? Icons.play_arrow_rounded
-                          : TasksPage._iconForAttachment(attachment.kind),
-                      size: iconSize,
-                      color: compact
-                          ? colorScheme.onSurfaceVariant
-                          : colorScheme.onSurface,
+                      child: Icon(
+                        TasksPage._iconForAttachment(attachment.kind),
+                        size: iconSize,
+                        color: compact
+                            ? colorScheme.onSurfaceVariant
+                            : colorScheme.onSurface,
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ],
@@ -1474,9 +1481,14 @@ class _TaskAttachmentThumb extends StatelessWidget {
 }
 
 class _TaskVideoPreview extends StatefulWidget {
-  const _TaskVideoPreview({required this.url, required this.label});
+  const _TaskVideoPreview({
+    required this.url,
+    required this.cacheKey,
+    required this.label,
+  });
 
   final String url;
+  final String cacheKey;
   final String label;
 
   @override
@@ -1484,54 +1496,67 @@ class _TaskVideoPreview extends StatefulWidget {
 }
 
 class _TaskVideoPreviewState extends State<_TaskVideoPreview> {
-  VideoPlayerController? _controller;
-  bool _ready = false;
+  String? _thumbPath;
+  bool _loading = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = _createTaskVideoController(widget.url)
-      ..initialize()
-          .then((_) {
-            if (!mounted) return;
-            setState(() {
-              _ready = true;
-            });
-          })
-          .catchError((_) {});
+    _loadThumbnail();
   }
 
   @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
+  void didUpdateWidget(covariant _TaskVideoPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url || oldWidget.cacheKey != widget.cacheKey) {
+      _thumbPath = null;
+      _loadThumbnail();
+    }
+  }
+
+  Future<void> _loadThumbnail() async {
+    setState(() => _loading = true);
+    try {
+      final cached = await PreviewCacheService.instance.cachedVideoThumbnail(
+        widget.url,
+        cacheKey: widget.cacheKey,
+      );
+      if (!mounted) return;
+      setState(() {
+        _thumbPath = cached;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_ready || _controller == null) {
+    final path = _thumbPath;
+    if (path == null || path.isEmpty) {
       return Container(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
         child: Center(
-          child: Icon(
-            Icons.play_circle_outline_rounded,
-            size: 42,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+          child: _loading
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2.4),
+                )
+              : Icon(
+                  Icons.play_circle_outline_rounded,
+                  size: 42,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
         ),
       );
     }
     return Stack(
       fit: StackFit.expand,
       children: [
-        FittedBox(
-          fit: BoxFit.cover,
-          child: SizedBox(
-            width: _controller!.value.size.width,
-            height: _controller!.value.size.height,
-            child: VideoPlayer(_controller!),
-          ),
-        ),
+        Image.file(File(path), fit: BoxFit.cover, gaplessPlayback: true),
         Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
