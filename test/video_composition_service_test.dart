@@ -30,7 +30,7 @@ void main() {
         capturedArguments = arguments;
         return const FfmpegRunResult(success: true, message: '');
       },
-      prober: (_) async => null,
+      prober: (_) async => _FakeMediaInformation(width: 1280, height: 720),
     );
 
     final result = await service.export(
@@ -62,6 +62,10 @@ void main() {
     expect(capturedArguments, containsAll(['-ss', '0.000', '-to', '1.000']));
     expect(capturedArguments, contains(clipA.path));
     expect(capturedArguments, contains(clipB.path));
+    final filter =
+        capturedArguments![capturedArguments!.indexOf('-filter_complex') + 1];
+    expect(filter, contains('aresample=48000'));
+    expect(filter, contains('channel_layouts=stereo'));
     expect(capturedArguments!.last, endsWith('mova-composition.mp4'));
     expect(result.fileName, 'mova-composition.mp4');
     expect(result.durationMs, 2000);
@@ -104,7 +108,9 @@ void main() {
       ),
     );
 
-    final filter = capturedArguments![capturedArguments!.indexOf('-filter_complex') + 1];
+    final filter =
+        capturedArguments![capturedArguments!.indexOf('-filter_complex') + 1];
+    expect(filter, contains('fps=30,settb=AVTB'));
     expect(filter, contains('xfade=transition=fade'));
     expect(filter, contains('duration=1.000'));
     expect(filter, contains('offset=4.000'));
@@ -112,10 +118,8 @@ void main() {
 
   test('throws platform exception when ffmpeg fails', () async {
     final service = VideoCompositionService(
-      runner: (_) async => const FfmpegRunResult(
-        success: false,
-        message: 'bad input',
-      ),
+      runner: (_) async =>
+          const FfmpegRunResult(success: false, message: 'bad input'),
       prober: (_) async => null,
     );
 
@@ -183,96 +187,164 @@ void main() {
     );
   });
 
-  test('explicit 1080p resolution normalizes every clip to 1920:1080', () async {
-    List<String>? capturedArguments;
-    final service = VideoCompositionService(
-      runner: (arguments) async {
-        capturedArguments = arguments;
-        return const FfmpegRunResult(success: true, message: '');
-      },
-      prober: (_) async => null,
-    );
+  test(
+    'explicit 1080p resolution normalizes every clip to 1920:1080',
+    () async {
+      List<String>? capturedArguments;
+      final service = VideoCompositionService(
+        runner: (arguments) async {
+          capturedArguments = arguments;
+          return const FfmpegRunResult(success: true, message: '');
+        },
+        prober: (_) async => null,
+      );
 
-    await service.export(
-      VideoCompositionProject(
-        clips: [
-          CompositionClip.local(
-            id: 'clip-1',
-            label: 'A.mp4',
-            localUri: 'file://${clipA.path}',
-            fileName: 'A.mp4',
-            startMs: 0,
-            endMs: 1000,
+      await service.export(
+        VideoCompositionProject(
+          clips: [
+            CompositionClip.local(
+              id: 'clip-1',
+              label: 'A.mp4',
+              localUri: 'file://${clipA.path}',
+              fileName: 'A.mp4',
+              startMs: 0,
+              endMs: 1000,
+            ),
+            CompositionClip.local(
+              id: 'clip-2',
+              label: 'B.mp4',
+              localUri: 'file://${clipB.path}',
+              fileName: 'B.mp4',
+              startMs: 0,
+              endMs: 1000,
+            ),
+          ],
+          output: CompositionOutputSettings.defaults.copyWith(
+            resolution: '1080p',
           ),
-          CompositionClip.local(
-            id: 'clip-2',
-            label: 'B.mp4',
-            localUri: 'file://${clipB.path}',
-            fileName: 'B.mp4',
-            startMs: 0,
-            endMs: 1000,
+          audio: const CompositionAudioSettings(
+            mode: CompositionAudioMode.muted,
           ),
-        ],
-        output: CompositionOutputSettings.defaults.copyWith(
-          resolution: '1080p',
         ),
-        audio: const CompositionAudioSettings(mode: CompositionAudioMode.muted),
-      ),
-    );
+      );
 
-    final filterIndex = capturedArguments!.indexOf('-filter_complex');
-    expect(filterIndex, isNonNegative);
-    final filter = capturedArguments![filterIndex + 1];
-    expect(filter, contains('scale=1920:1080'));
-    expect(filter, contains('pad=1920:1080'));
-  });
+      final filterIndex = capturedArguments!.indexOf('-filter_complex');
+      expect(filterIndex, isNonNegative);
+      final filter = capturedArguments![filterIndex + 1];
+      expect(filter, contains('scale=1920:1080'));
+      expect(filter, contains('pad=1920:1080'));
+    },
+  );
 
-  test('follow-first probes the first clip and locks every clip to it', () async {
-    final probedPaths = <String>[];
-    List<String>? capturedArguments;
-    final service = VideoCompositionService(
-      runner: (arguments) async {
-        capturedArguments = arguments;
-        return const FfmpegRunResult(success: true, message: '');
-      },
-      prober: (path) async {
-        probedPaths.add(path);
-        if (path == clipA.path) {
-          return _FakeMediaInformation(width: 1280, height: 720);
-        }
-        return _FakeMediaInformation(width: 640, height: 480);
-      },
-    );
+  test(
+    'follow-first probes the first clip and locks every clip to it',
+    () async {
+      final probedPaths = <String>[];
+      List<String>? capturedArguments;
+      final service = VideoCompositionService(
+        runner: (arguments) async {
+          capturedArguments = arguments;
+          return const FfmpegRunResult(success: true, message: '');
+        },
+        prober: (path) async {
+          probedPaths.add(path);
+          if (path == clipA.path) {
+            return _FakeMediaInformation(width: 1280, height: 720);
+          }
+          return _FakeMediaInformation(width: 640, height: 480);
+        },
+      );
 
-    await service.export(
-      VideoCompositionProject(
-        clips: [
-          CompositionClip.local(
-            id: 'clip-1',
-            label: 'A.mp4',
-            localUri: 'file://${clipA.path}',
-            fileName: 'A.mp4',
-            startMs: 0,
-            endMs: 1000,
+      await service.export(
+        VideoCompositionProject(
+          clips: [
+            CompositionClip.local(
+              id: 'clip-1',
+              label: 'A.mp4',
+              localUri: 'file://${clipA.path}',
+              fileName: 'A.mp4',
+              startMs: 0,
+              endMs: 1000,
+            ),
+            CompositionClip.local(
+              id: 'clip-2',
+              label: 'B.mp4',
+              localUri: 'file://${clipB.path}',
+              fileName: 'B.mp4',
+              startMs: 0,
+              endMs: 1000,
+            ),
+          ],
+          output: CompositionOutputSettings.defaults,
+          audio: const CompositionAudioSettings(
+            mode: CompositionAudioMode.muted,
           ),
-          CompositionClip.local(
-            id: 'clip-2',
-            label: 'B.mp4',
-            localUri: 'file://${clipB.path}',
-            fileName: 'B.mp4',
-            startMs: 0,
-            endMs: 1000,
-          ),
-        ],
-        output: CompositionOutputSettings.defaults,
-        audio: const CompositionAudioSettings(mode: CompositionAudioMode.muted),
-      ),
-    );
+        ),
+      );
 
-    expect(probedPaths, contains(clipA.path));
-    final filter = capturedArguments![capturedArguments!.indexOf('-filter_complex') + 1];
-    expect(filter, contains('scale=1280:720'));
-  });
+      expect(probedPaths, contains(clipA.path));
+      final filter =
+          capturedArguments![capturedArguments!.indexOf('-filter_complex') + 1];
+      expect(filter, contains('scale=1280:720'));
+    },
+  );
+
+  test(
+    'follow-first uses display dimensions when first clip has rotation metadata',
+    () async {
+      List<String>? capturedArguments;
+      final service = VideoCompositionService(
+        runner: (arguments) async {
+          capturedArguments = arguments;
+          return const FfmpegRunResult(success: true, message: '');
+        },
+        prober: (path) async {
+          if (path == clipA.path) {
+            return _FakeMediaInformation(
+              width: 1920,
+              height: 1080,
+              rotation: 90,
+            );
+          }
+          return _FakeMediaInformation(width: 1920, height: 1080);
+        },
+      );
+
+      await service.export(
+        VideoCompositionProject(
+          clips: [
+            CompositionClip.local(
+              id: 'clip-1',
+              label: 'portrait.mp4',
+              localUri: 'file://${clipA.path}',
+              fileName: 'portrait.mp4',
+              startMs: 0,
+              endMs: 1000,
+            ),
+            CompositionClip.local(
+              id: 'clip-2',
+              label: 'landscape.mp4',
+              localUri: 'file://${clipB.path}',
+              fileName: 'landscape.mp4',
+              startMs: 0,
+              endMs: 1000,
+            ),
+          ],
+          output: CompositionOutputSettings.defaults,
+          audio: const CompositionAudioSettings(
+            mode: CompositionAudioMode.muted,
+          ),
+        ),
+      );
+
+      final filter =
+          capturedArguments![capturedArguments!.indexOf('-filter_complex') + 1];
+      expect(capturedArguments, contains('-noautorotate'));
+      expect(filter, contains('transpose=1'));
+      expect(filter, contains('scale=1080:1920'));
+      expect(filter, contains('pad=1080:1920'));
+    },
+  );
 
   test('skips clip audio inputs when a clip has no audio stream', () async {
     List<String>? capturedArguments;
@@ -320,7 +392,8 @@ void main() {
       ),
     );
 
-    final filter = capturedArguments![capturedArguments!.indexOf('-filter_complex') + 1];
+    final filter =
+        capturedArguments![capturedArguments!.indexOf('-filter_complex') + 1];
     expect(filter, isNot(contains('[0:a:0]')));
     expect(filter, isNot(contains('[1:a:0]')));
     // Output mapping should not include [aout] when there is no audio.
@@ -335,11 +408,13 @@ class _FakeMediaInformation implements MediaInformation {
     required this.width,
     required this.height,
     this.includeAudio = true,
+    this.rotation = 0,
   });
 
   final int width;
   final int height;
   final bool includeAudio;
+  final int rotation;
 
   @override
   List<StreamInformation> getStreams() {
@@ -348,12 +423,15 @@ class _FakeMediaInformation implements MediaInformation {
         'codec_type': 'video',
         'width': width,
         'height': height,
+        if (rotation != 0) ...{
+          'tags': {'rotate': rotation.toString()},
+          'side_data_list': [
+            {'rotation': rotation},
+          ],
+        },
       }),
       if (includeAudio)
-        StreamInformation({
-          'codec_type': 'audio',
-          'sample_rate': '44100',
-        }),
+        StreamInformation({'codec_type': 'audio', 'sample_rate': '44100'}),
     ];
   }
 

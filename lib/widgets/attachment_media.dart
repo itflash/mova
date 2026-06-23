@@ -776,42 +776,46 @@ class _MovaVideoControlsState extends State<MovaVideoControls> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    _VideoRoundButton(
-                      tooltip: value.isPlaying ? '暂停' : '播放',
-                      icon: value.isPlaying
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                      onPressed: _togglePlay,
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        '${_formatDuration(Duration(milliseconds: relPos.round()))} / ${_formatDuration(Duration(milliseconds: trimDuration.round()))}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelMedium
-                            ?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                            ),
+                SizedBox(
+                  width: double.infinity,
+                  child: Row(
+                    children: [
+                      _VideoRoundButton(
+                        tooltip: value.isPlaying ? '暂停' : '播放',
+                        icon: value.isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        onPressed: _togglePlay,
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    _VideoRoundButton(
-                      tooltip: chewieController.isFullScreen ? '退出全屏' : '全屏',
-                      onPressed: chewieController.toggleFullScreen,
-                      icon: chewieController.isFullScreen
-                          ? Icons.fullscreen_exit_rounded
-                          : Icons.fullscreen_rounded,
-                      size: 40,
-                      iconSize: 22,
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${_formatDuration(Duration(milliseconds: relPos.round()))} / ${_formatDuration(Duration(milliseconds: trimDuration.round()))}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _VideoRoundButton(
+                        tooltip: chewieController.isFullScreen ? '退出全屏' : '全屏',
+                        onPressed: chewieController.toggleFullScreen,
+                        icon: chewieController.isFullScreen
+                            ? Icons.fullscreen_exit_rounded
+                            : Icons.fullscreen_rounded,
+                        size: 40,
+                        iconSize: 22,
+                      ),
+                    ],
+                  ),
                 ),
                 SliderTheme(
                   data: SliderTheme.of(context).copyWith(
+                    padding: EdgeInsets.zero,
                     trackHeight: 3,
                     activeTrackColor: Theme.of(context).colorScheme.primary,
                     inactiveTrackColor: Colors.white30,
@@ -827,6 +831,7 @@ class _MovaVideoControlsState extends State<MovaVideoControls> {
                     ),
                   ),
                   child: Slider(
+                    padding: EdgeInsets.zero,
                     min: 0,
                     max: durationMs,
                     value: relPos,

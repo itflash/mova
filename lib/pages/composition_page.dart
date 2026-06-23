@@ -45,8 +45,12 @@ class CompositionPage extends StatelessWidget {
                 ),
                 if (project.clips.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  for (final clip in project.clips) ...[
-                    _CompositionClipCard(clip: clip, state: state),
+                  for (var i = 0; i < project.clips.length; i++) ...[
+                    _CompositionClipCard(
+                      clip: project.clips[i],
+                      state: state,
+                      isLastClip: i == project.clips.length - 1,
+                    ),
                     const SizedBox(height: 12),
                   ],
                 ],
@@ -198,12 +202,16 @@ class _ExportActionButtons extends StatefulWidget {
   State<_ExportActionButtons> createState() => _ExportActionButtonsState();
 }
 
+enum _ExportFollowUpAction { saveToGallery, importToLibrary }
+
 class _ExportActionButtonsState extends State<_ExportActionButtons> {
-  bool _busy = false;
+  _ExportFollowUpAction? _busyAction;
+
+  bool get _busy => _busyAction != null;
 
   Future<void> _saveToGallery() async {
     if (_busy) return;
-    setState(() => _busy = true);
+    setState(() => _busyAction = _ExportFollowUpAction.saveToGallery);
     try {
       final saved = await widget.state.saveCompositionExportToGallery();
       if (!mounted) return;
@@ -213,13 +221,13 @@ class _ExportActionButtonsState extends State<_ExportActionButtons> {
           SnackBar(content: Text(saved == null ? '保存失败' : '已保存到系统相册')),
         );
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _busyAction = null);
     }
   }
 
   Future<void> _importToLibrary() async {
     if (_busy) return;
-    setState(() => _busy = true);
+    setState(() => _busyAction = _ExportFollowUpAction.importToLibrary);
     try {
       final attachmentId = await widget.state
           .importCompositionExportToLibrary();
@@ -237,37 +245,40 @@ class _ExportActionButtonsState extends State<_ExportActionButtons> {
           SnackBar(content: Text(widget.state.cleanErrorForDisplay(error))),
         );
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _busyAction = null);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+    return Row(
       children: [
-        _NeutralActionButton(
-          onPressed: _busy ? null : _saveToGallery,
-          icon: _busy
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.save_alt_rounded),
-          label: '保存到相册/文件',
+        Expanded(
+          child: _NeutralActionButton(
+            onPressed: _busy ? null : _saveToGallery,
+            icon: _busyAction == _ExportFollowUpAction.saveToGallery
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.save_alt_rounded),
+            label: '保存相册',
+          ),
         ),
-        _NeutralActionButton(
-          onPressed: _busy ? null : _importToLibrary,
-          icon: _busy
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.photo_library_rounded),
-          label: '导入素材库',
+        const SizedBox(width: 8),
+        Expanded(
+          child: _NeutralActionButton(
+            onPressed: _busy ? null : _importToLibrary,
+            icon: _busyAction == _ExportFollowUpAction.importToLibrary
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.photo_library_rounded),
+            label: '导入素材库',
+          ),
         ),
       ],
     );
@@ -304,10 +315,15 @@ Future<void> _pickAndAddAttachmentVideo(
 }
 
 class _CompositionClipCard extends StatefulWidget {
-  const _CompositionClipCard({required this.clip, required this.state});
+  const _CompositionClipCard({
+    required this.clip,
+    required this.state,
+    required this.isLastClip,
+  });
 
   final CompositionClip clip;
   final AppState state;
+  final bool isLastClip;
 
   @override
   State<_CompositionClipCard> createState() => _CompositionClipCardState();
@@ -361,7 +377,9 @@ class _CompositionClipCardState extends State<_CompositionClipCard> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '片段 ${_formatMs(clip.startMs)} - ${_formatMs(clip.endMs)} · ${_transitionLabel(clip.transitionType)}',
+                        widget.isLastClip
+                            ? '片段 ${_formatMs(clip.startMs)} - ${_formatMs(clip.endMs)} · 结尾片段'
+                            : '片段 ${_formatMs(clip.startMs)} - ${_formatMs(clip.endMs)} · 转场 ${_transitionLabel(clip.transitionType)}',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(
@@ -428,26 +446,28 @@ class _CompositionClipCardState extends State<_CompositionClipCard> {
               ),
             ),
             const SizedBox(height: 12),
-            AppDropdownField<CompositionTransitionType>(
-              value: clip.transitionType,
-              labelText: '转场',
-              items: CompositionTransitionType.values
-                  .map(
-                    (type) => DropdownItemData(
-                      value: type,
-                      label: _transitionLabel(type),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (type) {
-                if (type == null) return;
-                state.updateCompositionClip(
-                  clip.id,
-                  (current) => current.copyWith(transitionType: type),
-                );
-              },
-            ),
-            const SizedBox(height: 14),
+            if (!widget.isLastClip) ...[
+              AppDropdownField<CompositionTransitionType>(
+                value: clip.transitionType,
+                labelText: '转到下一个片段',
+                items: CompositionTransitionType.values
+                    .map(
+                      (type) => DropdownItemData(
+                        value: type,
+                        label: _transitionLabel(type),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (type) {
+                  if (type == null) return;
+                  state.updateCompositionClip(
+                    clip.id,
+                    (current) => current.copyWith(transitionType: type),
+                  );
+                },
+              ),
+              const SizedBox(height: 14),
+            ],
             _ClipActionBar(
               onTrim: () async {
                 _previewKey.currentState?.pausePlayback();
@@ -612,7 +632,7 @@ class _NeutralActionButton extends StatelessWidget {
           ),
         ),
         icon: IconTheme.merge(data: const IconThemeData(size: 18), child: icon),
-        label: Text(label),
+        label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
     );
   }

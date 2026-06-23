@@ -19,14 +19,32 @@ class FfmpegRunResult {
   final String message;
 }
 
+class _VideoStreamInfo {
+  const _VideoStreamInfo({
+    required this.width,
+    required this.height,
+    required this.rotationDegrees,
+  });
+
+  final int width;
+  final int height;
+  final int rotationDegrees;
+
+  (int, int) get displaySize {
+    final normalized = rotationDegrees % 360;
+    if (normalized == 90 || normalized == 270) return (height, width);
+    return (width, height);
+  }
+}
+
 class VideoCompositionService {
   VideoCompositionService({
     FfmpegRunner? runner,
     FfmpegCancel? cancel,
     FfmpegProbe? prober,
-  })  : _runner = runner ?? _runFfmpeg,
-        _cancel = cancel ?? FFmpegKit.cancel,
-        _prober = prober ?? _probeMedia;
+  }) : _runner = runner ?? _runFfmpeg,
+       _cancel = cancel ?? FFmpegKit.cancel,
+       _prober = prober ?? _probeMedia;
 
   static const channel = MethodChannel('mova/video_composition');
 
@@ -34,7 +52,9 @@ class VideoCompositionService {
   final FfmpegCancel _cancel;
   final FfmpegProbe _prober;
 
-  Future<CompositionExportResult> export(VideoCompositionProject project) async {
+  Future<CompositionExportResult> export(
+    VideoCompositionProject project,
+  ) async {
     _ensureSourcesExist(project);
     final outputDirectory = await Directory.systemTemp.createTemp(
       'mova-composition-',
@@ -49,7 +69,8 @@ class VideoCompositionService {
         project.audio.mode == CompositionAudioMode.keepOriginal) {
       final sourcePath = _localPathFromUri(project.clips.single.sourceUri);
       final clipSize = await _probeDimensions(sourcePath);
-      final needsScale = targetSize != null &&
+      final needsScale =
+          targetSize != null &&
           clipSize != null &&
           (clipSize.$1 != _widthFromTarget(targetSize) ||
               clipSize.$2 != _heightFromTarget(targetSize));
@@ -116,21 +137,30 @@ class VideoCompositionService {
   ) async {
     final clips = project.clips;
     if (clips.isEmpty) {
-      throw PlatformException(code: 'invalid_project', message: '至少添加 1 个视频片段。');
+      throw PlatformException(
+        code: 'invalid_project',
+        message: '至少添加 1 个视频片段。',
+      );
     }
 
     final hasAudioPerClip = await Future.wait(
       clips.map((clip) => _hasAudioStream(_localPathFromUri(clip.sourceUri))),
     );
+    final clipVideoInfos = await Future.wait(
+      clips.map(
+        (clip) => _probeVideoStreamInfo(_localPathFromUri(clip.sourceUri)),
+      ),
+    );
     final wantsClipAudio =
         project.audio.mode != CompositionAudioMode.muted &&
-            project.audio.mode != CompositionAudioMode.bgmOnly;
+        project.audio.mode != CompositionAudioMode.bgmOnly;
     final clipAudioReady = wantsClipAudio && hasAudioPerClip.every((b) => b);
     // keepOriginal + 无任何片段音轨 -> 视为 muted，避免 -map [aout] 失败。
     final hasOutputAudio =
-        (project.audio.mode == CompositionAudioMode.keepOriginal && clipAudioReady) ||
-            project.audio.mode == CompositionAudioMode.originalPlusBgm ||
-            project.audio.mode == CompositionAudioMode.bgmOnly;
+        (project.audio.mode == CompositionAudioMode.keepOriginal &&
+            clipAudioReady) ||
+        project.audio.mode == CompositionAudioMode.originalPlusBgm ||
+        project.audio.mode == CompositionAudioMode.bgmOnly;
 
     final args = <String>['-y'];
     for (final clip in clips) {
@@ -142,6 +172,7 @@ class VideoCompositionService {
         );
       }
       args.addAll([
+        '-noautorotate',
         '-ss',
         _seconds(clip.startMs),
         '-to',
@@ -156,13 +187,15 @@ class VideoCompositionService {
       args.addAll(['-i', _localPathFromUri(bgm.sourceUri)]);
     }
 
-    if (clips.length == 1 && project.audio.mode == CompositionAudioMode.keepOriginal) {
+    if (clips.length == 1 &&
+        project.audio.mode == CompositionAudioMode.keepOriginal) {
       args.addAll(['-c:v', 'libx264', '-c:a', 'aac']);
     } else {
       final filter = _buildFilterGraph(
         project,
         targetSize: targetSize,
         clipAudioReady: clipAudioReady,
+        clipVideoInfos: clipVideoInfos,
       );
       args.addAll(['-filter_complex', filter, '-map', '[vout]']);
       if (hasOutputAudio) {
@@ -188,18 +221,34 @@ class VideoCompositionService {
     VideoCompositionProject project, {
     required String? targetSize,
     required bool clipAudioReady,
+    required List<_VideoStreamInfo?> clipVideoInfos,
   }) {
     final clips = project.clips;
     final parts = <String>[];
-    final normalizeScale = _normalizeScaleFilterWith(project.output, targetSize);
-    final useClipAudio = clipAudioReady &&
+    final normalizeScale = _normalizeScaleFilterWith(
+      project.output,
+      targetSize,
+    );
+    final useClipAudio =
+        clipAudioReady &&
         project.audio.mode != CompositionAudioMode.muted &&
         project.audio.mode != CompositionAudioMode.bgmOnly;
     for (var i = 0; i < clips.length; i++) {
-      parts.add('[$i:v:0]setpts=PTS-STARTPTS$normalizeScale[v$i]');
+      final rotateFilter = _rotationFilter(
+        i < clipVideoInfos.length ? clipVideoInfos[i] : null,
+      );
+      final inputVideoFilters = [
+        if (rotateFilter.isNotEmpty) rotateFilter,
+        'fps=${project.output.fps}',
+        'settb=AVTB',
+        'setpts=PTS-STARTPTS',
+      ].join(',');
+      parts.add('[$i:v:0]$inputVideoFilters$normalizeScale[v$i]');
       if (useClipAudio) {
         parts.add(
-          '[$i:a:0]asetpts=PTS-STARTPTS,volume=${project.audio.originalVolume}[a$i]',
+          '[$i:a:0]asetpts=PTS-STARTPTS,aresample=48000,'
+          'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,'
+          'volume=${project.audio.originalVolume}[a$i]',
         );
       }
     }
@@ -214,9 +263,16 @@ class VideoCompositionService {
       var elapsedSeconds = clips.first.durationMs / 1000;
       for (var i = 1; i < clips.length; i++) {
         final previous = clips[i - 1];
+        final nextLabel = i == clips.length - 1 ? 'vbase' : 'vx$i';
+        if (previous.transitionType == CompositionTransitionType.none) {
+          parts.add('[$currentLabel][v$i]concat=n=2:v=1:a=0[$nextLabel]');
+          currentLabel = nextLabel;
+          elapsedSeconds += clips[i].durationMs / 1000;
+          continue;
+        }
+
         final durationSeconds = _transitionDurationSeconds(previous);
         final transition = _xfadeTransition(previous.transitionType);
-        final nextLabel = i == clips.length - 1 ? 'vbase' : 'vx$i';
         final offsetSeconds = (elapsedSeconds - durationSeconds).clamp(
           0,
           double.infinity,
@@ -229,7 +285,10 @@ class VideoCompositionService {
       }
       parts.add('[vbase]$outputScale[vout]');
       if (useClipAudio) {
-        final audioInputs = List.generate(clips.length, (index) => '[a$index]').join();
+        final audioInputs = List.generate(
+          clips.length,
+          (index) => '[a$index]',
+        ).join();
         parts.add('${audioInputs}concat=n=${clips.length}:v=0:a=1[abase]');
       }
     } else {
@@ -242,7 +301,9 @@ class VideoCompositionService {
       if (!useClipAudio) {
         parts.add('${concatInputs}concat=n=${clips.length}:v=1:a=0[vbase]');
       } else {
-        parts.add('${concatInputs}concat=n=${clips.length}:v=1:a=1[vbase][abase]');
+        parts.add(
+          '${concatInputs}concat=n=${clips.length}:v=1:a=1[vbase][abase]',
+        );
       }
       parts.add('[vbase]$outputScale[vout]');
     }
@@ -256,24 +317,40 @@ class VideoCompositionService {
         break;
       case CompositionAudioMode.originalPlusBgm:
         final bgmIndex = clips.length;
-        parts.add('[$bgmIndex:a:0]volume=${project.audio.bgmVolume}[bgm]');
+        parts.add(
+          '[$bgmIndex:a:0]aresample=48000,'
+          'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,'
+          'volume=${project.audio.bgmVolume}[bgm]',
+        );
         if (useClipAudio) {
-          parts.add('[abase][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]');
+          parts.add(
+            '[abase][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]',
+          );
         } else {
           // 没有片段音轨可混音，直接把 BGM 当主音轨。
           parts.removeLast();
-          parts.add('[$bgmIndex:a:0]volume=${project.audio.bgmVolume}[aout]');
+          parts.add(
+            '[$bgmIndex:a:0]aresample=48000,'
+            'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,'
+            'volume=${project.audio.bgmVolume}[aout]',
+          );
         }
       case CompositionAudioMode.bgmOnly:
         final bgmIndex = clips.length;
-        parts.add('[$bgmIndex:a:0]volume=${project.audio.bgmVolume}[aout]');
+        parts.add(
+          '[$bgmIndex:a:0]aresample=48000,'
+          'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,'
+          'volume=${project.audio.bgmVolume}[aout]',
+        );
     }
 
     return parts.join(';');
   }
 
   double _transitionDurationSeconds(CompositionClip clip) {
-    final requested = clip.transitionDurationMs > 0 ? clip.transitionDurationMs : 800;
+    final requested = clip.transitionDurationMs > 0
+        ? clip.transitionDurationMs
+        : 800;
     final maxForClip = (clip.durationMs / 2).floor();
     return (requested.clamp(1, maxForClip) / 1000).toDouble();
   }
@@ -368,21 +445,83 @@ class VideoCompositionService {
   }
 
   Future<(int, int)?> _probeDimensions(String path) async {
+    final info = await _probeVideoStreamInfo(path);
+    return info?.displaySize;
+  }
+
+  Future<_VideoStreamInfo?> _probeVideoStreamInfo(String path) async {
     try {
-      final info = await _prober(path);
-      if (info == null) return null;
-      final streams = info.getStreams();
+      final mediaInfo = await _prober(path);
+      if (mediaInfo == null) return null;
+      final streams = mediaInfo.getStreams();
       for (final stream in streams) {
         if (stream.getType() == 'video') {
           final w = stream.getWidth() ?? 0;
           final h = stream.getHeight() ?? 0;
-          if (w > 0 && h > 0) return (w, h);
+          if (w > 0 && h > 0) {
+            final rotation = _probeRotationDegrees(stream.getAllProperties());
+            return _VideoStreamInfo(
+              width: w,
+              height: h,
+              rotationDegrees: rotation,
+            );
+          }
         }
       }
       return null;
     } catch (_) {
       return null;
     }
+  }
+
+  int _probeRotationDegrees(Map<dynamic, dynamic>? properties) {
+    if (properties == null) return 0;
+    final direct =
+        _parseRotationValue(properties['rotation']) ??
+        _parseRotationValue(properties['rotate']);
+    if (direct != null) return direct;
+
+    final tags = properties['tags'];
+    if (tags is Map) {
+      final tagged =
+          _parseRotationValue(tags['rotate']) ??
+          _parseRotationValue(tags['rotation']);
+      if (tagged != null) return tagged;
+    }
+
+    final sideData = properties['side_data_list'];
+    if (sideData is List) {
+      for (final item in sideData) {
+        if (item is! Map) continue;
+        final rotation =
+            _parseRotationValue(item['rotation']) ??
+            _parseRotationValue(item['rotate']);
+        if (rotation != null) return rotation;
+      }
+    }
+
+    return 0;
+  }
+
+  int? _parseRotationValue(Object? value) {
+    if (value is num && value.isFinite) return value.round();
+    if (value is String) {
+      final match = RegExp(r'-?\d+(?:\.\d+)?').firstMatch(value);
+      final parsed = match == null ? null : num.tryParse(match.group(0)!);
+      if (parsed != null && parsed.isFinite) return parsed.round();
+    }
+    return null;
+  }
+
+  String _rotationFilter(_VideoStreamInfo? info) {
+    if (info == null) return '';
+    final normalized = info.rotationDegrees % 360;
+    return switch (normalized) {
+      90 => 'transpose=1',
+      180 => 'hflip,vflip',
+      270 => 'transpose=2',
+      _ => '',
+    };
   }
 
   Future<bool> _hasAudioStream(String path) async {
@@ -481,7 +620,10 @@ class VideoCompositionService {
       return const FfmpegRunResult(success: true, message: '');
     }
     final logs = await session.getAllLogsAsString();
-    return FfmpegRunResult(success: false, message: logs ?? returnCode.toString());
+    return FfmpegRunResult(
+      success: false,
+      message: logs ?? returnCode.toString(),
+    );
   }
 
   static Future<MediaInformation?> _probeMedia(String path) async {
