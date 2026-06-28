@@ -212,9 +212,24 @@ class VideoCompositionService {
       project.output.fps.toString(),
       '-b:v',
       '${project.output.bitrateKbps}k',
+      // 以视频实际时长为准截断输出：长 BGM 不会超出视频，-t 同时给 ffmpeg
+      // 明确的终止点，避免无限输入流在某些版本上卡住。
+      if (project.audio.requiresBgm) '-t',
+      if (project.audio.requiresBgm) _videoDurationSeconds(project),
       outputPath,
     ]);
     return args;
+  }
+
+  /// 合成后视频的真实时长（秒），已扣除转场重叠。
+  String _videoDurationSeconds(VideoCompositionProject project) {
+    final clips = project.clips;
+    if (clips.isEmpty) return '0';
+    double total = clips.fold<double>(0, (sum, clip) => sum + clip.durationMs);
+    for (var i = 0; i < clips.length - 1; i++) {
+      total -= _transitionDurationSeconds(clips[i]);
+    }
+    return (total / 1000).toStringAsFixed(3);
   }
 
   String _buildFilterGraph(

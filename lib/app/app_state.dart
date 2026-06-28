@@ -865,6 +865,12 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  void clearCompositionBgm() {
+    updateCompositionAudio(
+      compositionProject.audio.copyWith(clearBgmSource: true),
+    );
+  }
+
   void setActiveMode(ModeId mode) {
     if (activeMode == mode) return;
     activeMode = mode;
