@@ -10,11 +10,13 @@ void main() {
   late Directory fixturesDir;
   late File clipA;
   late File clipB;
+  late File bgm;
 
   setUp(() {
     fixturesDir = Directory.systemTemp.createTempSync('mova-svc-test-');
     clipA = File('${fixturesDir.path}/a.mp4')..writeAsBytesSync([0]);
     clipB = File('${fixturesDir.path}/b.mp4')..writeAsBytesSync([0]);
+    bgm = File('${fixturesDir.path}/song.m4a')..writeAsBytesSync([0]);
   });
 
   tearDown(() {
@@ -398,6 +400,50 @@ void main() {
     expect(filter, isNot(contains('[1:a:0]')));
     // Output mapping should not include [aout] when there is no audio.
     expect(capturedArguments, isNot(contains('[aout]')));
+  });
+
+  test('bgm-only mode truncates output to video duration with -t', () async {
+    List<String>? capturedArguments;
+    final service = VideoCompositionService(
+      runner: (arguments) async {
+        capturedArguments = arguments;
+        return const FfmpegRunResult(success: true, message: '');
+      },
+      prober: (_) async => _FakeMediaInformation(width: 1920, height: 1080),
+    );
+
+    await service.export(
+      VideoCompositionProject(
+        clips: [
+          CompositionClip.local(
+            id: 'clip-1',
+            label: 'A.mp4',
+            localUri: 'file://${clipA.path}',
+            fileName: 'A.mp4',
+            startMs: 0,
+            endMs: 3000,
+          ),
+        ],
+        output: CompositionOutputSettings.defaults,
+        audio: CompositionAudioSettings(
+          mode: CompositionAudioMode.bgmOnly,
+          bgmSource: CompositionBgmSource.local(
+            id: 'bgm-1',
+            label: 'song.m4a',
+            localUri: 'file://${bgm.path}',
+            fileName: 'song.m4a',
+          ),
+        ),
+      ),
+    );
+
+    expect(capturedArguments, isNotNull);
+    expect(capturedArguments, contains('-t'));
+    final tIndex = capturedArguments!.indexOf('-t');
+    expect(capturedArguments![tIndex + 1], '3.000');
+    final filter =
+        capturedArguments![capturedArguments!.indexOf('-filter_complex') + 1];
+    expect(filter, contains('[aout]'));
   });
 }
 

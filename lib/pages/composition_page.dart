@@ -124,14 +124,7 @@ class CompositionPage extends StatelessWidget {
                   },
                 ),
                 const SizedBox(height: 14),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: _NeutralActionButton(
-                    onPressed: state.pickCompositionBgm,
-                    icon: const Icon(Icons.music_note_rounded),
-                    label: project.audio.bgmSource?.label ?? '选择 BGM',
-                  ),
-                ),
+                _BgmPickerRow(project: project, state: state),
               ],
             ),
           ),
@@ -592,6 +585,37 @@ class _ClipIconActionButton extends StatelessWidget {
         ),
       ),
       icon: Icon(icon, size: 19),
+    );
+  }
+}
+
+class _BgmPickerRow extends StatelessWidget {
+  const _BgmPickerRow({required this.project, required this.state});
+
+  final VideoCompositionProject project;
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final bgm = project.audio.bgmSource;
+    return Row(
+      children: [
+        Expanded(
+          child: _NeutralActionButton(
+            onPressed: state.pickCompositionBgm,
+            icon: const Icon(Icons.music_note_rounded),
+            label: bgm?.label ?? '选择 BGM',
+          ),
+        ),
+        if (bgm != null) ...[
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: '移除 BGM',
+            icon: const Icon(Icons.delete_outline_rounded),
+            onPressed: state.clearCompositionBgm,
+          ),
+        ],
+      ],
     );
   }
 }
