@@ -1,10 +1,19 @@
+# 说明
+**通过邀请链接：`https://agentearth.ai/r/Knsi7fRF` 注册可获得5000积分(官方活动，先到先得)，目前可生成10个720P seedance2视频**
+
+如果需要`首尾帧/参考图/图生图`，则需要自己注册七牛云/缤纷云存储。
+> 都有一定的免费空间及流量，基本都够用
+- 七牛：https://s.qiniu.com/vaUV3e
+- 缤纷云：https://console.bitiful.com/login
+
+七牛/缤纷云配置参考：https://gmev6z07ix.feishu.cn/wiki/WZv1w4igziY0jkkddIscvusNnOb?from=from_copylink
+
 # Mova
 
 Mova 是一个纯客户端的 Flutter 创作应用，面向“图像生成、视频生成、素材管理、任务追踪”这一整条工作流。
 
 目前项目已经打通了：
 
-- 基于 AgentEarth.ai 的工具发现与执行
 - 图片生成工作流
 - Seedance2 生视频工作流
 - 本地视频剪辑、转场、BGM 与合成导出工作流
@@ -50,13 +59,13 @@ Mova 是一个纯客户端的 Flutter 创作应用，面向“图像生成、视
 
 ## 当前使用的第三方服务
 
-### 1. AgentEarth.ai
+### 1. AgentEarth
 
-项目当前通过 AgentEarth.ai 做工具发现与执行入口，用于衔接上游图片生成与视频生成能力。
+项目当前通过 AgentEarth 做工具发现与执行入口，用于衔接上游图片生成与视频生成能力。
 
 这里需要特别说明：
 
-- 这里提到 AgentEarth.ai，只是说明当前项目“已经接入并验证可用”
+- 这里提到 AgentEarth，只是说明当前项目“已经接入并验证可用”
 - 这不是推荐、背书或投资建议
 - 你在购买、开通、充值、调用任何第三方服务前，请自行甄别其稳定性、合规性、计费规则和风险
 
