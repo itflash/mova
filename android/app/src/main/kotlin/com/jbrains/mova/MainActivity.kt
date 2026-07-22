@@ -235,8 +235,10 @@ class MainActivity : FlutterActivity() {
             if (!stored.contains(":")) {
                 return stored
             }
-            // 到这里说明是"看起来像密文但解不出来"，不返回破损内容，
-            // 也不清空磁盘（保留原始密文以便后续人工恢复 / 后续版本升级）。
+            // 看起来像旧密文但解不出来，说明 Keystore key 已失效。
+            // 备份原始密文到另一个 key，然后返回 null；Dart 侧的空 state
+            // 不会被写回（_schedulePersist 有 _isEffectivelyEmpty 保护）。
+            databaseHelper.putValue("encrypted_app_state_backup", stored)
         }
 
         val preferences = getSharedPreferences(preferencesName, Context.MODE_PRIVATE)

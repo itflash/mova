@@ -3794,11 +3794,29 @@ class AppState extends ChangeNotifier {
     _persistDebounce?.cancel();
     _persistDebounce = Timer(const Duration(milliseconds: 250), () async {
       try {
-        await _storage.writeState(jsonEncode(_toJson()));
+        final json = _toJson();
+        // 如果读盘失败（比如旧密文无法解密），Dart 侧拿到的 state 是空的。
+        // 此时绝不能把空 state 写回磁盘覆盖原始数据，否则重启后数据就真的丢了。
+        if (_isEffectivelyEmpty(json)) return;
+        await _storage.writeState(jsonEncode(json));
       } catch (_) {
         // Keep persistence failure non-blocking; visible state should not roll back.
       }
     });
+  }
+
+  /// 检查当前 state 是否"有效为空"——没有任何素材、任务、prompt 或设置变更。
+  /// 初次启动且读盘失败时 app 处于这个状态，此时不应覆盖磁盘上的旧数据。
+  bool _isEffectivelyEmpty(Map<String, Object?> json) {
+    final library = json['library'];
+    if (library is List && library.isNotEmpty) return false;
+    final tasks = json['tasks'];
+    if (tasks is List && tasks.isNotEmpty) return false;
+    final prompt = json['prompt'];
+    if (prompt is String && prompt.trim().isNotEmpty) return false;
+    final imagePrompt = json['imagePrompt'];
+    if (imagePrompt is String && imagePrompt.trim().isNotEmpty) return false;
+    return true;
   }
 
   Map<String, Object?> _toJson() {
