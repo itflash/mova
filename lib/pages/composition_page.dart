@@ -288,6 +288,7 @@ Future<void> _pickAndAddAttachmentVideo(
     title: '选择素材库素材',
     subtitle: '从素材库选择一个视频加入剪辑。',
     kind: AttachmentKind.video,
+    allowEphemeral: false,
   );
   if (picked == null) return;
 

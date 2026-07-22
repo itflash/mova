@@ -126,17 +126,19 @@ class SeedanceService {
     }
 
     final result = parseAgentEarthAsyncResult(response['result']);
-    final responseUrl = _firstStringFromMap(result, ['response_url']);
+    // 新版 ae_* 工具返回 task_id；旧版 xl_falai_* 返回 response_url。
+    // 两者都塞进 TaskExecution.responseUrl，轮询侧再按格式派发到对应 poll 工具。
+    final pollHandle = _firstStringFromMap(result, ['task_id', 'response_url']);
     final statusUrl = _firstStringFromMap(result, ['status_url']);
-    if (responseUrl == null) {
+    if (pollHandle == null) {
       throw TaskExecutionException(
-        'AgentEarth 执行成功，但未返回 response_url，无法继续轮询结果。',
+        'AgentEarth 执行成功，但未返回 task_id / response_url，无法继续轮询结果。',
         requestPreview: preview,
       );
     }
 
     return TaskExecution(
-      responseUrl: responseUrl,
+      responseUrl: pollHandle,
       statusUrl: statusUrl,
       toolName: resolvedTool.toolName,
       credit: resolvedTool.credit,
@@ -286,19 +288,37 @@ class SeedanceService {
     required String baseUrl,
   }) async {
     final requestPreview = _buildPollRequestPreview(responseUrl, baseUrl);
-    final response = await _clientForBaseUrl(baseUrl).post(
-      '/tool/execute?tool_name=xl_get_response',
-      apiKey,
-      {
-        'params': {'response_url': responseUrl},
-      },
-    );
+    final Map<String, Object?> response;
+    if (_looksLikeUrl(responseUrl)) {
+      // 兼容旧任务：fal 排队 URL 走 xl_get_response。
+      response = await _clientForBaseUrl(baseUrl).post(
+        '/tool/execute?tool_name=xl_get_response',
+        apiKey,
+        {
+          'params': {'response_url': responseUrl},
+        },
+      );
+    } else {
+      // 新任务：ae_* 返回 task_id，走 ae_get_result。
+      response = await _clientForBaseUrl(baseUrl).post(
+        '/tool/execute?tool_name=ae_get_result',
+        apiKey,
+        {
+          'params': {'task_id': responseUrl},
+        },
+      );
+    }
     return _PollHttpResult(requestPreview: requestPreview, response: response);
   }
 }
 
 String buildPollRequestPreview(String responseUrl, {String? baseUrl}) =>
     _buildPollRequestPreview(responseUrl, baseUrl ?? agentEarthDefaultBaseUrl);
+
+bool _looksLikeUrl(String value) {
+  final trimmed = value.trim();
+  return trimmed.startsWith('http://') || trimmed.startsWith('https://');
+}
 
 SeedanceTool fallbackToolForMode(ModeId mode, {String? baseUrl}) {
   final resolvedBaseUrl = normalizeAgentEarthBaseUrl(
@@ -307,9 +327,9 @@ SeedanceTool fallbackToolForMode(ModeId mode, {String? baseUrl}) {
   switch (mode) {
     case ModeId.text:
       return SeedanceTool(
-        toolName: 'xl_falai_post_seedance_2_text_to_video',
+        toolName: 'ae_seedance_2_text_to_video',
         toolUrl:
-            '$resolvedBaseUrl/tool/execute?tool_name=xl_falai_post_seedance_2_text_to_video',
+            '$resolvedBaseUrl/tool/execute?tool_name=ae_seedance_2_text_to_video',
         credit: 500,
         description: 'Seedance2 文本生视频',
         inputProperties: {
@@ -325,9 +345,9 @@ SeedanceTool fallbackToolForMode(ModeId mode, {String? baseUrl}) {
     case ModeId.firstFrame:
     case ModeId.firstLast:
       return SeedanceTool(
-        toolName: 'xl_falai_post_seedance_2_image_to_video',
+        toolName: 'ae_seedance_2_image_to_video',
         toolUrl:
-            '$resolvedBaseUrl/tool/execute?tool_name=xl_falai_post_seedance_2_image_to_video',
+            '$resolvedBaseUrl/tool/execute?tool_name=ae_seedance_2_image_to_video',
         credit: 500,
         description: 'Seedance2 首帧/首尾帧图生视频',
         inputProperties: {
@@ -344,9 +364,9 @@ SeedanceTool fallbackToolForMode(ModeId mode, {String? baseUrl}) {
       );
     case ModeId.reference:
       return SeedanceTool(
-        toolName: 'xl_falai_post_seedance_2_reference_to_video',
+        toolName: 'ae_seedance_2_reference_to_video',
         toolUrl:
-            '$resolvedBaseUrl/tool/execute?tool_name=xl_falai_post_seedance_2_reference_to_video',
+            '$resolvedBaseUrl/tool/execute?tool_name=ae_seedance_2_reference_to_video',
         credit: 500,
         description: 'Seedance2 参考素材生成',
         inputProperties: {
@@ -473,10 +493,15 @@ String _toolQueryForMode(ModeId mode) {
 }
 
 String _buildPollRequestPreview(String responseUrl, String baseUrl) {
+  final isUrl = _looksLikeUrl(responseUrl);
+  final toolName = isUrl ? 'xl_get_response' : 'ae_get_result';
+  final params = isUrl
+      ? <String, Object?>{'response_url': responseUrl}
+      : <String, Object?>{'task_id': responseUrl};
   return _prettyJson({
-    'tool_name': 'xl_get_response',
-    'tool_url': '$baseUrl/tool/execute?tool_name=xl_get_response',
-    'params': {'response_url': responseUrl},
+    'tool_name': toolName,
+    'tool_url': '$baseUrl/tool/execute?tool_name=$toolName',
+    'params': params,
   });
 }
 
@@ -683,6 +708,23 @@ _FailureDetail? _extractFailureDetail(Object? value) {
   }
   if (parsed is! Map) return null;
 
+  // 新版 ae_* 处于 processing / created / queued 状态时会在 result.message
+  // 里返回 "task is still processing, please wait" 之类文案，不要误判成失败。
+  final asyncStatus = parsed['status'];
+  if (asyncStatus is String) {
+    final normalized = asyncStatus.toUpperCase();
+    if ([
+      'CREATED',
+      'QUEUED',
+      'PROCESSING',
+      'RUNNING',
+      'IN_PROGRESS',
+      'PENDING',
+    ].contains(normalized)) {
+      return null;
+    }
+  }
+
   final detailItems = parsed['detail'];
   if (detailItems is List) {
     for (final entry in detailItems) {
@@ -712,7 +754,12 @@ _FailureDetail? _extractFailureDetail(Object? value) {
     parsed['message'],
     parsed['error'],
   ]);
-  if (errorMessage != null) {
+  // ae_* 里 result.message 可能是 "task is still processing"；只有当上层
+  // 明确报错（error_no != 0）或存在 error_msg / detail 才当作失败。
+  final isRealError =
+      errorMessage != null &&
+      !_looksLikeProcessingMessage(errorMessage);
+  if (isRealError) {
     return _FailureDetail(
       code: _normalizeFailureCode(
         _firstString([parsed['type'], parsed['code']]),
@@ -727,6 +774,14 @@ _FailureDetail? _extractFailureDetail(Object? value) {
     if (detail != null) return detail;
   }
   return null;
+}
+
+bool _looksLikeProcessingMessage(String message) {
+  final normalized = message.toLowerCase();
+  return normalized.contains('still processing') ||
+      normalized.contains('please wait and query again') ||
+      normalized.contains('task is running') ||
+      normalized.contains('task is queued');
 }
 
 String _normalizeFailureMessage(String message) {
@@ -775,13 +830,13 @@ TaskStatus _normalizeStatus(
     return TaskStatus.success;
   }
   final text = status is String ? status.toUpperCase() : '';
-  if (['COMPLETED', 'SUCCESS', 'SUCCEEDED', 'OK'].contains(text)) {
+  if (['COMPLETED', 'SUCCESS', 'SUCCEEDED', 'OK', 'FINISHED'].contains(text)) {
     return TaskStatus.inProgress;
   }
-  if (['FAILED', 'FAILURE', 'ERROR', 'CANCELED'].contains(text)) {
+  if (['FAILED', 'FAILURE', 'ERROR', 'CANCELED', 'CANCELLED'].contains(text)) {
     return TaskStatus.failure;
   }
-  if (['IN_PROGRESS', 'RUNNING', 'PROCESSING'].contains(text)) {
+  if (['IN_PROGRESS', 'RUNNING', 'PROCESSING', 'CREATED', 'QUEUED'].contains(text)) {
     return TaskStatus.inProgress;
   }
   return TaskStatus.submitted;
@@ -809,7 +864,7 @@ String? _extractCompletionAnomaly(
 
 bool _isCompletedStatus(String? status) {
   final text = status?.toUpperCase();
-  return ['COMPLETED', 'SUCCESS', 'SUCCEEDED', 'OK'].contains(text);
+  return ['COMPLETED', 'SUCCESS', 'SUCCEEDED', 'OK', 'FINISHED'].contains(text);
 }
 
 int _normalizeProgress(

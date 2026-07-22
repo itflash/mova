@@ -366,20 +366,6 @@ class _SettingsPageState extends State<SettingsPage> {
                     (current) => current.copyWith(autoDownload: value),
                   ),
                 ),
-                const PanelDivider(),
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('主工具失败时自动尝试备用生图服务'),
-                  subtitle: Text(
-                    '关闭后会严格使用 GPT Image 2；开启后失败时会尝试兼容服务，结果风格和参数支持可能不同。',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  value: state.settings.imageAutoFallbackEnabled,
-                  onChanged: (value) => state.updateSettings(
-                    (current) =>
-                        current.copyWith(imageAutoFallbackEnabled: value),
-                  ),
-                ),
               ],
             ),
           ),

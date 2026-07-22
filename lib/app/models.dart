@@ -4,6 +4,12 @@ enum ModeId { text, firstFrame, firstLast, reference }
 
 enum StorageProvider { qiniu, bitifulS4 }
 
+/// 素材的来源。
+///
+/// - [library] 走用户自己的对象存储（七牛 / 缤纷云），永久保存并进素材库；
+/// - [ephemeral] 走 AgentEarth 官方托管的临时通道，仅用于当次任务，不进素材库。
+enum AttachmentSource { library, ephemeral }
+
 enum AttachmentRole {
   firstFrame,
   lastFrame,
@@ -226,7 +232,6 @@ class SettingsState {
     required this.bitifulPublicDomain,
     required this.autoPoll,
     required this.autoDownload,
-    this.imageAutoFallbackEnabled = false,
   });
 
   final StorageProvider storageProvider;
@@ -244,7 +249,6 @@ class SettingsState {
   final String bitifulPublicDomain;
   final bool autoPoll;
   final bool autoDownload;
-  final bool imageAutoFallbackEnabled;
 
   SettingsState copyWith({
     StorageProvider? storageProvider,
@@ -262,7 +266,6 @@ class SettingsState {
     String? bitifulPublicDomain,
     bool? autoPoll,
     bool? autoDownload,
-    bool? imageAutoFallbackEnabled,
   }) {
     return SettingsState(
       storageProvider: storageProvider ?? this.storageProvider,
@@ -280,8 +283,6 @@ class SettingsState {
       bitifulPublicDomain: bitifulPublicDomain ?? this.bitifulPublicDomain,
       autoPoll: autoPoll ?? this.autoPoll,
       autoDownload: autoDownload ?? this.autoDownload,
-      imageAutoFallbackEnabled:
-          imageAutoFallbackEnabled ?? this.imageAutoFallbackEnabled,
     );
   }
 }
@@ -312,6 +313,8 @@ class Attachment {
     this.storageDomain,
     this.fileSizeBytes,
     this.sourceTaskId,
+    this.source = AttachmentSource.library,
+    this.expiresAt,
   });
 
   final String id;
@@ -342,6 +345,17 @@ class Attachment {
   /// 非任务来源（本地导入、合成导出、抓帧导入）为 null。
   final String? sourceTaskId;
 
+  /// 素材来源。默认 [AttachmentSource.library] 表示走用户自建的对象存储、进素材库；
+  /// [AttachmentSource.ephemeral] 表示走 AgentEarth 官方托管的临时链接，仅用于当次
+  /// 任务，不落进素材库。
+  final AttachmentSource source;
+
+  /// 仅对临时素材有意义：链接可能在这个时间之后失效。
+  /// null 表示未知或长期有效。
+  final DateTime? expiresAt;
+
+  bool get isEphemeral => source == AttachmentSource.ephemeral;
+
   Attachment copyWith({
     String? label,
     AttachmentRole? role,
@@ -366,12 +380,15 @@ class Attachment {
     String? storageDomain,
     int? fileSizeBytes,
     String? sourceTaskId,
+    AttachmentSource? source,
+    DateTime? expiresAt,
     bool clearLocalResourceUri = false,
     bool clearLocalFileName = false,
     bool clearLocalUpdatedAt = false,
     bool clearLocalErrorMessage = false,
     bool clearFileSizeBytes = false,
     bool clearSourceTaskId = false,
+    bool clearExpiresAt = false,
   }) {
     return Attachment(
       id: id,
@@ -411,6 +428,8 @@ class Attachment {
       sourceTaskId: clearSourceTaskId
           ? null
           : (sourceTaskId ?? this.sourceTaskId),
+      source: source ?? this.source,
+      expiresAt: clearExpiresAt ? null : (expiresAt ?? this.expiresAt),
     );
   }
 }

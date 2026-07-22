@@ -14,18 +14,10 @@ class ImageGenerationService {
   ApiClient _clientForBaseUrl(String baseUrl) =>
       _client ?? ApiClient(baseUrl: baseUrl);
 
-  static const _ratioToPixels = {
-    '1:1': (1024, 1024),
-    '4:3': (1360, 1024),
-    '16:9': (1360, 768),
-    '9:16': (768, 1360),
-  };
-
   Future<SeedanceTool> resolveTool(
     String apiKey, {
     required ImageCreateMode mode,
     required String baseUrl,
-    bool allowFallback = false,
   }) async {
     final primaryToolName = _primaryToolName(mode);
     final response = await _clientForBaseUrl(baseUrl).post(
@@ -47,16 +39,6 @@ class ImageGenerationService {
       if (toolUrl is String && toolUrl.contains('tool_name=$primaryToolName')) {
         matched = tool;
         break;
-      }
-    }
-
-    if (matched == null &&
-        allowFallback &&
-        mode == ImageCreateMode.textToImage) {
-      try {
-        return await _resolveFallbackTool(apiKey, baseUrl: baseUrl);
-      } on Exception {
-        // Fall through to the primary-tool error below.
       }
     }
 
@@ -105,19 +87,6 @@ class ImageGenerationService {
     return _makePreview(resolvedTool, <String, Object?>{'params': params});
   }
 
-  SeedanceRequestPreview _buildFallbackPreview({
-    required String prompt,
-    required ImageMetadataState metadata,
-    required String baseUrl,
-    required SeedanceTool tool,
-  }) {
-    final params = _buildFallbackExecuteParams(
-      prompt: prompt,
-      metadata: metadata,
-    );
-    return _makePreview(tool, <String, Object?>{'params': params});
-  }
-
   Future<TaskExecution> execute({
     required String apiKey,
     required ImageCreateMode mode,
@@ -126,46 +95,17 @@ class ImageGenerationService {
     required List<Attachment> attachments,
     required String baseUrl,
     SeedanceTool? tool,
-    bool allowFallback = false,
   }) async {
-    final fallbackAllowed =
-        allowFallback && mode == ImageCreateMode.textToImage;
-
-    SeedanceTool resolvedTool;
-    try {
-      resolvedTool =
-          tool ??
-          await resolveTool(
-            apiKey,
-            mode: mode,
-            baseUrl: baseUrl,
-            allowFallback: fallbackAllowed,
-          );
-    } on Exception {
-      if (fallbackAllowed) {
-        resolvedTool = await _resolveFallbackTool(apiKey, baseUrl: baseUrl);
-      } else {
-        rethrow;
-      }
-    }
-
-    final isFallback =
-        resolvedTool.toolName == 'xl_dumplingai_generate_ai_image';
-    final preview = isFallback
-        ? _buildFallbackPreview(
-            prompt: prompt,
-            metadata: metadata,
-            baseUrl: baseUrl,
-            tool: resolvedTool,
-          )
-        : buildRequestPreview(
-            mode: mode,
-            prompt: prompt,
-            metadata: metadata,
-            attachments: attachments,
-            baseUrl: baseUrl,
-            tool: resolvedTool,
-          );
+    final resolvedTool =
+        tool ?? await resolveTool(apiKey, mode: mode, baseUrl: baseUrl);
+    final preview = buildRequestPreview(
+      mode: mode,
+      prompt: prompt,
+      metadata: metadata,
+      attachments: attachments,
+      baseUrl: baseUrl,
+      tool: resolvedTool,
+    );
 
     Map<String, Object?> response;
     try {
@@ -173,44 +113,6 @@ class ImageGenerationService {
         baseUrl,
       ).post(resolvedTool.toolUrl, apiKey, preview.body);
     } on Exception catch (error) {
-      if (fallbackAllowed && !isFallback) {
-        final fallbackTool = await _resolveFallbackTool(
-          apiKey,
-          baseUrl: baseUrl,
-        );
-        final fallbackPreview = _buildFallbackPreview(
-          prompt: prompt,
-          metadata: metadata,
-          baseUrl: baseUrl,
-          tool: fallbackTool,
-        );
-        try {
-          response = await _clientForBaseUrl(
-            baseUrl,
-          ).post(fallbackTool.toolUrl, apiKey, fallbackPreview.body);
-          final result = parseAgentEarthAsyncResult(response['result']);
-          final responseUrl = _firstStringFromMap(result, ['response_url']);
-          if (responseUrl == null) {
-            throw TaskExecutionException(
-              '备用工具执行成功，但未返回 response_url。',
-              requestPreview: fallbackPreview,
-            );
-          }
-          return TaskExecution(
-            responseUrl: responseUrl,
-            statusUrl: _firstStringFromMap(result, ['status_url']),
-            toolName: fallbackTool.toolName,
-            credit: fallbackTool.credit,
-            requestPreview: fallbackPreview,
-            responsePreview: _prettyJson(response),
-          );
-        } on Exception catch (fallbackError) {
-          throw TaskExecutionException(
-            '主工具失败，备用工具也失败：${fallbackError.toString().replaceFirst('Exception: ', '')}',
-            requestPreview: preview,
-          );
-        }
-      }
       throw TaskExecutionException(
         error.toString().replaceFirst('Exception: ', ''),
         requestPreview: preview,
@@ -218,16 +120,17 @@ class ImageGenerationService {
     }
 
     final result = parseAgentEarthAsyncResult(response['result']);
-    final responseUrl = _firstStringFromMap(result, ['response_url']);
-    if (responseUrl == null) {
+    final pollHandle =
+        _firstStringFromMap(result, ['task_id', 'response_url']);
+    if (pollHandle == null) {
       throw TaskExecutionException(
-        'AgentEarth 执行成功，但未返回 response_url，无法继续轮询结果。',
+        'AgentEarth 执行成功，但未返回 task_id / response_url，无法继续轮询结果。',
         requestPreview: preview,
       );
     }
 
     return TaskExecution(
-      responseUrl: responseUrl,
+      responseUrl: pollHandle,
       statusUrl: _firstStringFromMap(result, ['status_url']),
       toolName: resolvedTool.toolName,
       credit: resolvedTool.credit,
@@ -381,13 +284,24 @@ class ImageGenerationService {
       responseUrl,
       baseUrl: baseUrl,
     );
-    final response = await _clientForBaseUrl(baseUrl).post(
-      '/tool/execute?tool_name=xl_get_response',
-      apiKey,
-      {
-        'params': {'response_url': responseUrl},
-      },
-    );
+    final trimmed = responseUrl.trim();
+    final isUrl =
+        trimmed.startsWith('http://') || trimmed.startsWith('https://');
+    final response = isUrl
+        ? await _clientForBaseUrl(baseUrl).post(
+            '/tool/execute?tool_name=xl_get_response',
+            apiKey,
+            {
+              'params': {'response_url': responseUrl},
+            },
+          )
+        : await _clientForBaseUrl(baseUrl).post(
+            '/tool/execute?tool_name=ae_get_result',
+            apiKey,
+            {
+              'params': {'task_id': responseUrl},
+            },
+          );
     return _ImagePollHttpResult(
       requestPreview: requestPreview,
       response: response,
@@ -415,8 +329,8 @@ class ImageGenerationService {
   // -- private helpers --
 
   String _primaryToolName(ImageCreateMode mode) => switch (mode) {
-    ImageCreateMode.textToImage => 'xl_falai_post_openai_gpt_image_2',
-    ImageCreateMode.imageToImage => 'xl_falai_post_openai_gpt_image_2_edit',
+    ImageCreateMode.textToImage => 'ae_openai_gpt_image_2',
+    ImageCreateMode.imageToImage => 'ae_openai_gpt_image_2_edit',
   };
 
   String _recommendQuery(ImageCreateMode mode) => switch (mode) {
@@ -462,46 +376,6 @@ class ImageGenerationService {
     );
   }
 
-  Future<SeedanceTool> _resolveFallbackTool(
-    String apiKey, {
-    required String baseUrl,
-  }) async {
-    final response = await _clientForBaseUrl(baseUrl).post(
-      '/tool/recommend',
-      apiKey,
-      {'query': 'DumplingAI image generation', 'limit': 5},
-    );
-    final tools = response['tools'];
-    if (tools is! List) {
-      throw const ApiClientException('AgentEarth 推荐未返回备用工具。');
-    }
-    for (final item in tools) {
-      if (item is! Map) continue;
-      final tool = Map<String, Object?>.from(item);
-      final toolUrl = tool['tool_url'];
-      if (toolUrl is String &&
-          toolUrl.contains('tool_name=xl_dumplingai_generate_ai_image')) {
-        return SeedanceTool(
-          toolName: 'xl_dumplingai_generate_ai_image',
-          toolUrl: toolUrl,
-          credit: tool['credit'] is num ? (tool['credit'] as num).round() : 10,
-          description: tool['description'] is String
-              ? tool['description'] as String
-              : 'DumplingAI Image',
-          inputProperties: const {
-            'prompt',
-            'height',
-            'width',
-            'model',
-            'style',
-          },
-          fromRecommendation: true,
-        );
-      }
-    }
-    throw const ApiClientException('AgentEarth 推荐未返回备用工具。');
-  }
-
   Map<String, Object?> _buildTextExecuteParams({
     required String prompt,
     required ImageMetadataState metadata,
@@ -537,19 +411,6 @@ class ImageGenerationService {
       'output_format': metadata.outputFormat,
       'quality': metadata.quality,
       'sync_mode': false,
-    });
-  }
-
-  Map<String, Object?> _buildFallbackExecuteParams({
-    required String prompt,
-    required ImageMetadataState metadata,
-  }) {
-    final pixels =
-        _ratioToPixels[metadata.aspectRatio] ?? _ratioToPixels['1:1']!;
-    return _compactObject({
-      'prompt': prompt,
-      'width': pixels.$1,
-      'height': pixels.$2,
     });
   }
 
@@ -653,10 +514,17 @@ class ImageGenerationService {
     if (_isCompletedStatus(text)) {
       return TaskStatus.inProgress;
     }
-    if (['FAILED', 'FAILURE', 'ERROR', 'CANCELED'].contains(text)) {
+    if (['FAILED', 'FAILURE', 'ERROR', 'CANCELED', 'CANCELLED'].contains(text)) {
       return TaskStatus.failure;
     }
-    if (['IN_PROGRESS', 'RUNNING', 'PROCESSING'].contains(text)) {
+    if ([
+      'IN_PROGRESS',
+      'RUNNING',
+      'PROCESSING',
+      'CREATED',
+      'QUEUED',
+      'PENDING',
+    ].contains(text)) {
       return TaskStatus.inProgress;
     }
     return TaskStatus.submitted;
@@ -725,6 +593,23 @@ class ImageGenerationService {
     if (parsed is! Map) return null;
     final map = Map<String, Object?>.from(parsed);
 
+    // 处理中 / 排队中的响应不算失败：ae_get_result 在 processing 阶段会把
+    // "task is still processing, please wait" 塞进 result.message。
+    final asyncStatus = map['status'];
+    if (asyncStatus is String) {
+      final normalized = asyncStatus.toUpperCase();
+      if ([
+        'CREATED',
+        'QUEUED',
+        'PROCESSING',
+        'RUNNING',
+        'IN_PROGRESS',
+        'PENDING',
+      ].contains(normalized)) {
+        return null;
+      }
+    }
+
     final detailItems = map['detail'];
     if (detailItems is List) {
       for (final entry in detailItems) {
@@ -759,7 +644,9 @@ class ImageGenerationService {
       'message',
       'error',
     ]);
-    if (errorMessage != null) {
+    final isRealError = errorMessage != null &&
+        !_looksLikeProcessingMessage(errorMessage);
+    if (isRealError) {
       return _FailureDetail(
         code: _normalizeFailureCode(
           _firstStringFromMap(map, ['type', 'code']),
@@ -774,6 +661,14 @@ class ImageGenerationService {
       if (detail != null) return detail;
     }
     return null;
+  }
+
+  bool _looksLikeProcessingMessage(String message) {
+    final normalized = message.toLowerCase();
+    return normalized.contains('still processing') ||
+        normalized.contains('please wait and query again') ||
+        normalized.contains('task is running') ||
+        normalized.contains('task is queued');
   }
 
   String _normalizeFailureMessage(String message) {
@@ -793,7 +688,7 @@ class ImageGenerationService {
 
   bool _isCompletedStatus(String? status) {
     final text = status?.toUpperCase();
-    return ['COMPLETED', 'SUCCESS', 'SUCCEEDED', 'OK'].contains(text);
+    return ['COMPLETED', 'SUCCESS', 'SUCCEEDED', 'OK', 'FINISHED'].contains(text);
   }
 
   Object? _parseEmbeddedJson(Object? value) {

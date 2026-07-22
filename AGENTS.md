@@ -184,6 +184,23 @@ ANDROID_KEY_PASSWORD
 - Use `apply_patch` for manual edits
 - Prefer `rg` for file/text search
 
+## AgentEarth 工具口径
+
+- 视频生成只允许 `ae_seedance_2_text_to_video` / `ae_seedance_2_image_to_video` / `ae_seedance_2_reference_to_video`
+- 生图与图片编辑只允许 `ae_openai_gpt_image_2` / `ae_openai_gpt_image_2_edit`
+- 不做跨模型 fallback：拿不到主工具就直接失败，不要偷换成 Seedream / DumplingAI 或其他家族
+- 提交返回 `task_id`，用 `ae_get_result` 轮询；老 fal 队列 URL 仍走 `xl_get_response` 兼容存量任务
+- 状态词表：`created / queued / processing / running / in_progress / finished` 都视为进行中或成功；`failed / failure / error / canceled` 才算失败
+
+### 临时素材直传通道
+
+- 目的：用户不想把一次性素材落到自己的七牛/缤纷云空间时使用
+- 工具：`xl_file_service_get_upload_addr` 拿到 `uploadURL` + 长期 `downloadURL`，PUT 原始字节
+- 素材选择器有两个 tab：素材库（走 `StorageProvider`）和手机相册（走 AgentEarth 直传）
+- 临时素材保存在 `AppState.ephemeralAttachments`，不持久化，30 条上限；图片 20MB / 视频 500MB / 音频 100MB
+- 合成页 (`composition_page`) 不启用临时素材，因为它依赖 `ensureAttachmentVideoLocal` 只处理素材库条目
+- 判定条件是 `Attachment.isEphemeral` / `AttachmentSource.ephemeral`；不要新增 `StorageProvider` 枚举值
+
 ## Change Safety
 
 - Never assume the worktree is clean

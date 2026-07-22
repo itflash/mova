@@ -84,6 +84,20 @@ Mova 是一个纯客户端的 Flutter 创作应用，面向“图像生成、视
 - 这不是对任何上游模型或服务商的推荐
 - 具体服务质量、价格、可用性与合规性，请自行评估
 
+当前接入口径固定为：
+
+- 视频：`ae_seedance_2_text_to_video` / `ae_seedance_2_image_to_video` / `ae_seedance_2_reference_to_video`
+- 图片：`ae_openai_gpt_image_2` / `ae_openai_gpt_image_2_edit`
+- 提交后统一走 `ae_get_result` 轮询 `task_id`（老 fal 队列 URL 仍兼容 `xl_get_response`），不做跨模型兜底
+
+### 临时素材直传
+
+除了把素材上传到自己的七牛 / 缤纷云空间外，参考图 / 首尾帧 / 提及素材的选择器还提供"手机相册"tab：
+
+- 选中的文件通过 `xl_file_service_get_upload_addr` 拿到 AgentEarth 官方托管的 uploadURL，PUT 原始字节后拿到长期 downloadURL 直接喂给下游 `ae_*` 工具
+- 上传结果只保留在本次会话里，不进素材库，也不持久化；上限图片 20MB / 视频 500MB / 音频 100MB
+- 适合"临时用一次就丢"的素材；想长期复用或纳入素材管理时仍应走对象存储上传
+
 ### 3. 对象存储
 
 当前项目已对接两种素材存储方案：

@@ -320,6 +320,7 @@ class _ImageCreatePageState extends State<ImageCreatePage> {
       title: '选择参考图',
       subtitle: '图生图会把这些图片作为编辑输入传给 AgentEarth。',
       kind: AttachmentKind.image,
+      ephemeralRole: AttachmentRole.referenceImage,
     );
     if (picked == null) return;
     state.addImageReferenceAttachment(picked.id);

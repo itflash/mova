@@ -11,6 +11,7 @@ import 'mock_data.dart';
 import 'models.dart';
 import '../services/app_storage.dart';
 import '../services/api_client.dart';
+import '../services/agent_earth_file_service.dart';
 import '../services/bitiful_s4_upload_service.dart';
 import '../services/native_file_picker.dart';
 import '../services/qiniu_upload_service.dart';
@@ -28,6 +29,7 @@ class AppState extends ChangeNotifier {
   final NativeFilePicker _filePicker;
   final QiniuUploadService _qiniuUploadService;
   final BitifulS4UploadService _bitifulUploadService;
+  final AgentEarthFileService _agentEarthFileService;
   final AppStorage _storage;
   final ImageGenerationService _imageGenerationService;
   final VideoFrameService _videoFrameService;
@@ -49,6 +51,7 @@ class AppState extends ChangeNotifier {
     NativeFilePicker? filePicker,
     QiniuUploadService? qiniuUploadService,
     BitifulS4UploadService? bitifulUploadService,
+    AgentEarthFileService? agentEarthFileService,
     AppStorage? storage,
     ImageGenerationService? imageGenerationService,
     VideoFrameService? videoFrameService,
@@ -57,6 +60,8 @@ class AppState extends ChangeNotifier {
        _filePicker = filePicker ?? NativeFilePicker(),
        _qiniuUploadService = qiniuUploadService ?? QiniuUploadService(),
        _bitifulUploadService = bitifulUploadService ?? BitifulS4UploadService(),
+       _agentEarthFileService =
+           agentEarthFileService ?? AgentEarthFileService(),
        _storage = storage ?? AppStorage(),
        _imageGenerationService =
            imageGenerationService ?? ImageGenerationService(),
@@ -73,6 +78,13 @@ class AppState extends ChangeNotifier {
   MetadataState metadata = metadataDefaults;
   SettingsState settings = settingsDefaults;
   final List<Attachment> library = [...initialLibrary];
+  /// 本次会话里通过"手机相册"临时上传到 AgentEarth 的素材，最近一次上传排前面。
+  /// 不进 [library]，不持久化——重启后就没了。
+  final List<Attachment> ephemeralAttachments = [];
+  static const int _ephemeralHistoryLimit = 30;
+  static const int _ephemeralImageBytesLimit = 20 * 1024 * 1024;
+  static const int _ephemeralVideoBytesLimit = 500 * 1024 * 1024;
+  static const int _ephemeralAudioBytesLimit = 100 * 1024 * 1024;
   final List<TaskRecord> tasks = [...initialTasks];
   final List<RecentVideoSource> recentVideoSources = [];
   final List<String> categories = [...defaultCategories];
@@ -308,7 +320,7 @@ class AppState extends ChangeNotifier {
         }
         return attachments;
       case ModeId.reference:
-        final byId = {for (final item in uploadedLibrary) item.id: item};
+        final byId = _selectableAttachmentIndex();
         return selectedAttachmentIds
             .map((id) => byId[id])
             .whereType<Attachment>()
@@ -317,7 +329,7 @@ class AppState extends ChangeNotifier {
   }
 
   List<Attachment> get selectedImageAttachments {
-    final byId = {for (final item in uploadedLibrary) item.id: item};
+    final byId = _selectableAttachmentIndex();
     return selectedImageAttachmentIds
         .map((id) => byId[id])
         .whereType<Attachment>()
@@ -1053,10 +1065,7 @@ class AppState extends ChangeNotifier {
     if (role != AttachmentRole.firstFrame && role != AttachmentRole.lastFrame) {
       return;
     }
-    final attachment = library.cast<Attachment?>().firstWhere(
-      (item) => item?.id == attachmentId,
-      orElse: () => null,
-    );
+    final attachment = attachmentById(attachmentId);
     if (attachment == null || attachment.kind != AttachmentKind.image) return;
     if (role == AttachmentRole.firstFrame) {
       selectedFirstFrameAttachmentId = attachmentId;
@@ -1077,10 +1086,7 @@ class AppState extends ChangeNotifier {
   }
 
   void addImageReferenceAttachment(String attachmentId) {
-    final attachment = library.cast<Attachment?>().firstWhere(
-      (item) => item?.id == attachmentId,
-      orElse: () => null,
-    );
+    final attachment = attachmentById(attachmentId);
     if (attachment == null || attachment.kind != AttachmentKind.image) return;
     if (!selectedImageAttachmentIds.contains(attachmentId)) {
       selectedImageAttachmentIds.add(attachmentId);
@@ -1096,10 +1102,7 @@ class AppState extends ChangeNotifier {
 
   void selectMentionAttachment(String attachmentId, {int? fallbackCursor}) {
     if (activeMode != ModeId.reference) return;
-    final attachment = library.cast<Attachment?>().firstWhere(
-      (item) => item?.id == attachmentId,
-      orElse: () => null,
-    );
+    final attachment = attachmentById(attachmentId);
     if (attachment == null) return;
     if (!selectedAttachmentIds.contains(attachmentId)) {
       selectedAttachmentIds.add(attachmentId);
@@ -1136,14 +1139,8 @@ class AppState extends ChangeNotifier {
   }) {
     if (activeMode != ModeId.reference) return;
     if (currentAttachmentId == nextAttachmentId) return;
-    final current = library.cast<Attachment?>().firstWhere(
-      (item) => item?.id == currentAttachmentId,
-      orElse: () => null,
-    );
-    final next = library.cast<Attachment?>().firstWhere(
-      (item) => item?.id == nextAttachmentId,
-      orElse: () => null,
-    );
+    final current = attachmentById(currentAttachmentId);
+    final next = attachmentById(nextAttachmentId);
     if (current == null || next == null) return;
     final index = selectedAttachmentIds.indexOf(currentAttachmentId);
     if (index == -1) return;
@@ -1479,7 +1476,6 @@ class AppState extends ChangeNotifier {
         settings.agentEarthApiKey,
         mode: activeImageMode,
         baseUrl: settings.agentEarthBaseUrl,
-        allowFallback: settings.imageAutoFallbackEnabled,
       );
       imageToolResolution = ToolResolution(
         status: ToolResolutionStatus.ready,
@@ -1664,7 +1660,6 @@ class AppState extends ChangeNotifier {
         attachments: submissionAttachments,
         baseUrl: settings.agentEarthBaseUrl,
         tool: imageToolResolution.tool,
-        allowFallback: settings.imageAutoFallbackEnabled,
       );
 
       final now = DateTime.now();
@@ -1745,7 +1740,7 @@ class AppState extends ChangeNotifier {
       tasks[index] = task.copyWith(
         status: TaskStatus.failure,
         pollingStatus: PollingStatus.error,
-        lastError: '任务缺少 status_url/response_url，无法查询上游状态。',
+        lastError: '任务缺少 task_id / status_url，无法查询上游状态。',
         statusDetail: '缺少查询 URL',
         updatedAt: DateTime.now(),
         hasAnomaly: true,
@@ -1918,7 +1913,7 @@ class AppState extends ChangeNotifier {
       tasks[index] = task.copyWith(
         status: TaskStatus.failure,
         pollingStatus: PollingStatus.error,
-        lastError: '任务缺少 status_url/response_url，无法查询上游状态。',
+        lastError: '任务缺少 task_id / status_url，无法查询上游状态。',
         statusDetail: '缺少查询 URL',
         updatedAt: DateTime.now(),
         hasAnomaly: true,
@@ -2588,7 +2583,12 @@ class AppState extends ChangeNotifier {
     if (attachmentId == null || attachmentId.trim().isEmpty) {
       return null;
     }
-    return library.cast<Attachment?>().firstWhere(
+    final fromLibrary = library.cast<Attachment?>().firstWhere(
+      (item) => item?.id == attachmentId,
+      orElse: () => null,
+    );
+    if (fromLibrary != null) return fromLibrary;
+    return ephemeralAttachments.cast<Attachment?>().firstWhere(
       (item) => item?.id == attachmentId,
       orElse: () => null,
     );
@@ -3147,6 +3147,184 @@ class AppState extends ChangeNotifier {
     }
 
     return successCount;
+  }
+
+  /// 从本地相册/文件挑一个素材，走 AgentEarth 官方托管通道临时上传。
+  ///
+  /// 返回的 [Attachment] 不进入 [library]，只保留在 [ephemeralAttachments] 里，
+  /// 用于本次任务；上传成功后本地缓存 URL 以便预览。
+  ///
+  /// [kindFilter] 用来过滤挑选的文件类型（比如首帧只允许图片）。
+  /// [role] 决定素材被下游工具当作哪种参考。
+  Future<Attachment?> pickEphemeralAttachment({
+    AttachmentKind? kindFilter,
+    AttachmentRole role = AttachmentRole.referenceImage,
+    String? categoryOverride,
+  }) async {
+    uploadErrorMessage = null;
+    if (!isAgentEarthConfigured) {
+      uploadErrorMessage = '请先在设置里填写 AgentEarth API Key，才能使用临时素材直传。';
+      notifyListeners();
+      return null;
+    }
+
+    List<PickedNativeFile> files;
+    try {
+      files = await _filePicker.pickMediaFiles();
+    } on Exception catch (error) {
+      uploadErrorMessage = _cleanError(error);
+      notifyListeners();
+      return null;
+    }
+    if (files.isEmpty) return null;
+
+    // 相册通道每次只上传第一张（选择器允许多选，但语义上"临时素材"是单条）。
+    final file = files.first;
+    final kind = _kindForMime(file.mimeType);
+    if (kind == null) {
+      uploadErrorMessage = '暂只支持图片、视频、音频类型的临时素材。';
+      notifyListeners();
+      return null;
+    }
+    if (kindFilter != null && kind != kindFilter) {
+      uploadErrorMessage = _mismatchMessage(kindFilter, kind);
+      notifyListeners();
+      return null;
+    }
+    final sizeLimit = switch (kind) {
+      AttachmentKind.image => _ephemeralImageBytesLimit,
+      AttachmentKind.video => _ephemeralVideoBytesLimit,
+      AttachmentKind.audio => _ephemeralAudioBytesLimit,
+    };
+    if (file.bytes.length > sizeLimit) {
+      uploadErrorMessage =
+          '文件超出临时素材大小限制（${_prettyBytes(sizeLimit)}）。请压缩后重试，或先上传到素材库。';
+      notifyListeners();
+      return null;
+    }
+
+    final now = DateTime.now();
+    final id = 'ephemeral-${now.microsecondsSinceEpoch}';
+    final placeholder = Attachment(
+      id: id,
+      label: file.name,
+      role: role,
+      kind: kind,
+      fileName: file.name,
+      category: categoryOverride ?? _defaultCategoryForKind(kind),
+      createdAt: now,
+      status: AttachmentStatus.uploading,
+      url: '',
+      storageProvider: settings.storageProvider,
+      source: AttachmentSource.ephemeral,
+      fileSizeBytes: file.bytes.length,
+    );
+    ephemeralAttachments.insert(0, placeholder);
+    _trimEphemerals();
+    notifyListeners();
+
+    try {
+      final ext = extForMimeType(file.mimeType);
+      final address = await _agentEarthFileService.requestUploadAddress(
+        apiKey: settings.agentEarthApiKey,
+        baseUrl: settings.agentEarthBaseUrl,
+        ext: ext,
+        sizeBytes: file.bytes.length,
+        ttlMinutes: 60,
+      );
+      await _agentEarthFileService.putBytes(
+        address: address,
+        bytes: file.bytes,
+        contentType: file.mimeType,
+        onProgress: (sent, total) {
+          if (total <= 0) return;
+          final idx = ephemeralAttachments.indexWhere(
+            (item) => item.id == id,
+          );
+          if (idx == -1) return;
+          final percent = ((sent / total) * 100).round().clamp(0, 100);
+          if (ephemeralAttachments[idx].uploadProgress == percent) return;
+          ephemeralAttachments[idx] = ephemeralAttachments[idx].copyWith(
+            uploadProgress: percent,
+          );
+          notifyListeners();
+        },
+      );
+
+      final idx = ephemeralAttachments.indexWhere((item) => item.id == id);
+      if (idx == -1) return null;
+      final updated = ephemeralAttachments[idx].copyWith(
+        status: AttachmentStatus.uploaded,
+        url: address.downloadUrl,
+        uploadProgress: 100,
+        expiresAt: address.expiresAt,
+      );
+      ephemeralAttachments[idx] = updated;
+      notifyListeners();
+      return updated;
+    } on Exception catch (error) {
+      uploadErrorMessage = _cleanError(error);
+      final idx = ephemeralAttachments.indexWhere((item) => item.id == id);
+      if (idx != -1) {
+        ephemeralAttachments[idx] = ephemeralAttachments[idx].copyWith(
+          status: AttachmentStatus.error,
+        );
+      }
+      notifyListeners();
+      return null;
+    }
+  }
+
+  /// 清空当前会话累计的临时素材（不影响素材库）。
+  void clearEphemeralAttachments() {
+    if (ephemeralAttachments.isEmpty) return;
+    ephemeralAttachments.clear();
+    notifyListeners();
+  }
+
+  void _trimEphemerals() {
+    while (ephemeralAttachments.length > _ephemeralHistoryLimit) {
+      ephemeralAttachments.removeLast();
+    }
+  }
+
+  AttachmentKind? _kindForMime(String mime) {
+    final normalized = mime.toLowerCase().trim();
+    if (normalized.startsWith('image/')) return AttachmentKind.image;
+    if (normalized.startsWith('video/')) return AttachmentKind.video;
+    if (normalized.startsWith('audio/')) return AttachmentKind.audio;
+    return null;
+  }
+
+  String _defaultCategoryForKind(AttachmentKind kind) {
+    switch (kind) {
+      case AttachmentKind.image:
+        return '角色';
+      case AttachmentKind.video:
+        return '分镜';
+      case AttachmentKind.audio:
+        return '音效';
+    }
+  }
+
+  String _mismatchMessage(AttachmentKind expected, AttachmentKind actual) {
+    String label(AttachmentKind k) => switch (k) {
+          AttachmentKind.image => '图片',
+          AttachmentKind.video => '视频',
+          AttachmentKind.audio => '音频',
+        };
+    return '这里需要${label(expected)}，你选的是${label(actual)}。';
+  }
+
+  String _prettyBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    }
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(0)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 
   Future<bool> testAgentEarthConfig() async {
@@ -3806,7 +3984,6 @@ class AppState extends ChangeNotifier {
     'bitifulPublicDomain': value.bitifulPublicDomain,
     'autoPoll': value.autoPoll,
     'autoDownload': value.autoDownload,
-    'imageAutoFallbackEnabled': value.imageAutoFallbackEnabled,
   };
 
   SettingsState _settingsFromJson(Object? value) {
@@ -3871,10 +4048,6 @@ class AppState extends ChangeNotifier {
         map['autoDownload'],
         settingsDefaults.autoDownload,
       ),
-      imageAutoFallbackEnabled: _boolValue(
-        map['imageAutoFallbackEnabled'],
-        false,
-      ),
     );
   }
 
@@ -3926,6 +4099,10 @@ class AppState extends ChangeNotifier {
     Attachment attachment, {
     required _AttachmentAccessPurpose purpose,
   }) async {
+    // 临时素材走 AgentEarth 内传，直链本身就可以直接访问，跳过签名逻辑。
+    if (attachment.isEphemeral) {
+      return attachment.url;
+    }
     if (attachment.storageProvider == StorageProvider.qiniu) {
       final objectKey = attachment.objectKey?.trim();
       // 域名优先取素材上传时记录的 storageDomain，回退到当前全局配置。
@@ -4610,7 +4787,27 @@ class AppState extends ChangeNotifier {
       if (kind != null && attachment.kind != kind) continue;
       return attachment;
     }
+    for (final attachment in ephemeralAttachments) {
+      if (attachment.id != attachmentId) continue;
+      if (attachment.status != AttachmentStatus.uploaded) continue;
+      if (kind != null && attachment.kind != kind) continue;
+      return attachment;
+    }
     return null;
+  }
+
+  /// 合并"素材库"与"当前会话临时素材"的可选池索引。
+  /// 用于把 attachmentId 映射回具体 [Attachment]，无论它是永久还是临时的。
+  Map<String, Attachment> _selectableAttachmentIndex() {
+    final byId = <String, Attachment>{};
+    for (final item in uploadedLibrary) {
+      byId[item.id] = item;
+    }
+    for (final item in ephemeralAttachments) {
+      if (item.status != AttachmentStatus.uploaded) continue;
+      byId.putIfAbsent(item.id, () => item);
+    }
+    return byId;
   }
 
   Attachment? get _legacySelectedImageAttachment {

@@ -616,6 +616,7 @@ class _CreatePageState extends State<CreatePage> {
       subtitle: '选择后会在光标处插入素材占位。',
       initialQuery: state.mentionQuery,
       initialCategory: state.mentionCategoryFilter,
+      ephemeralRole: AttachmentRole.referenceImage,
     );
     if (picked != null) {
       final selection = _promptController.selection;
@@ -649,6 +650,7 @@ class _CreatePageState extends State<CreatePage> {
           : '这张图会作为视频收尾画面。',
       kind: AttachmentKind.image,
       excludeAttachmentId: currentAttachment?.id,
+      ephemeralRole: role,
     );
     if (picked == null) return;
     state.selectVideoFrameAttachment(picked.id, role: role);
@@ -703,6 +705,7 @@ class _CreatePageState extends State<CreatePage> {
       subtitle: '保持当前位置不变，直接替换成另一个素材。',
       kind: currentAttachment.kind,
       excludeAttachmentId: currentAttachment.id,
+      ephemeralRole: currentAttachment.role,
     );
     if (picked == null) return;
     state.replaceSelectedAttachment(

@@ -70,7 +70,6 @@ const settingsDefaults = SettingsState(
   bitifulPublicDomain: '',
   autoPoll: true,
   autoDownload: true,
-  imageAutoFallbackEnabled: false,
 );
 
 final initialLibrary = <Attachment>[];
