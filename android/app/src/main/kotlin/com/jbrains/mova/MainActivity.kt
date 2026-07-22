@@ -12,8 +12,6 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.OpenableColumns
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.media.MediaMetadataRetriever
 import android.graphics.Bitmap
@@ -25,11 +23,6 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
-import java.security.KeyStore
 
 class MainActivity : FlutterActivity() {
     private val fileChannelName = "mova/native_files"
@@ -44,8 +37,8 @@ class MainActivity : FlutterActivity() {
     private val tableName = "app_kv_store"
     private val columnKey = "store_key"
     private val columnValue = "store_value"
+    // 沿用旧的行名（历史上是加密后写在这里），改为明文；读侧兼容旧密文格式一次性迁移。
     private val stateStoreKey = "encrypted_app_state"
-    private val keyStoreAlias = "mova_state_key"
     private val pickMediaRequestCode = 2048
     private val exportBackupRequestCode = 2049
     private val importBackupRequestCode = 2050
@@ -228,7 +221,22 @@ class MainActivity : FlutterActivity() {
     private fun readState(): String? {
         val stored = databaseHelper.getValue(stateStoreKey)
         if (!stored.isNullOrBlank()) {
-            return decryptString(stored)
+            // 兼容旧密文格式："<ivBase64>:<cipherBase64>"。
+            // 解密失败绝不能抛，否则上层会拿不到旧数据，紧接着把空 state
+            // 写回来覆盖磁盘。任何异常都当成"无法恢复旧密文"，直接回退到
+            // legacy SharedPreferences，让用户至少不会立即被清空。
+            val migrated = tryDecryptLegacy(stored)
+            if (migrated != null) {
+                // 一次性迁移：把明文写回同一个 key，后续都走明文路径。
+                databaseHelper.putValue(stateStoreKey, migrated)
+                return migrated
+            }
+            // 不是旧密文格式，说明已经是明文；直接返回。
+            if (!stored.contains(":")) {
+                return stored
+            }
+            // 到这里说明是"看起来像密文但解不出来"，不返回破损内容，
+            // 也不清空磁盘（保留原始密文以便后续人工恢复 / 后续版本升级）。
         }
 
         val preferences = getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
@@ -241,8 +249,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun writeState(value: String) {
-        val encrypted = encryptString(value)
-        databaseHelper.putValue(stateStoreKey, encrypted)
+        databaseHelper.putValue(stateStoreKey, value)
     }
 
     private fun exportState(result: MethodChannel.Result, value: String, suggestedFileName: String) {
@@ -693,57 +700,31 @@ class MainActivity : FlutterActivity() {
         startActivity(Intent.createChooser(intent, "打开媒体"))
     }
 
-    private fun encryptString(value: String): String {
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey())
-        val iv = cipher.iv
-        val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
-        val ivBase64 = Base64.encodeToString(iv, Base64.NO_WRAP)
-        val encryptedBase64 = Base64.encodeToString(encrypted, Base64.NO_WRAP)
-        return "$ivBase64:$encryptedBase64"
-    }
-
-    private fun decryptString(value: String): String {
-        if (!value.contains(":")) {
-            return value
-        }
+    /// 兼容旧版本用 AndroidKeyStore + AES/GCM 加密后写入的 state。
+    /// 只在冷启动时被调用一次；解密任一环节抛异常都当作"无法恢复"，
+    /// 返回 null 让调用方保留原始密文，避免立即被空 state 覆盖。
+    private fun tryDecryptLegacy(value: String): String? {
+        if (!value.contains(":")) return null
         val parts = value.split(":", limit = 2)
-        if (parts.size != 2) {
-            return value
+        if (parts.size != 2) return null
+        return try {
+            val keyStore = java.security.KeyStore
+                .getInstance("AndroidKeyStore")
+                .apply { load(null) }
+            val key = keyStore.getKey("mova_state_key", null) as? javax.crypto.SecretKey
+                ?: return null
+            val iv = Base64.decode(parts[0], Base64.NO_WRAP)
+            val encrypted = Base64.decode(parts[1], Base64.NO_WRAP)
+            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(
+                javax.crypto.Cipher.DECRYPT_MODE,
+                key,
+                javax.crypto.spec.GCMParameterSpec(128, iv),
+            )
+            String(cipher.doFinal(encrypted), Charsets.UTF_8)
+        } catch (_: Throwable) {
+            null
         }
-        val iv = Base64.decode(parts[0], Base64.NO_WRAP)
-        val encrypted = Base64.decode(parts[1], Base64.NO_WRAP)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(
-            Cipher.DECRYPT_MODE,
-            getOrCreateSecretKey(),
-            GCMParameterSpec(128, iv),
-        )
-        val decrypted = cipher.doFinal(encrypted)
-        return String(decrypted, Charsets.UTF_8)
-    }
-
-    private fun getOrCreateSecretKey(): SecretKey {
-        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        val existing = keyStore.getKey(keyStoreAlias, null)
-        if (existing is SecretKey) {
-            return existing
-        }
-
-        val keyGenerator = KeyGenerator.getInstance(
-            KeyProperties.KEY_ALGORITHM_AES,
-            "AndroidKeyStore"
-        )
-        val spec = KeyGenParameterSpec.Builder(
-            keyStoreAlias,
-            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-        )
-            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setRandomizedEncryptionRequired(true)
-            .build()
-        keyGenerator.init(spec)
-        return keyGenerator.generateKey()
     }
 
     private inner class AppDatabaseHelper(context: Context) :
