@@ -8,7 +8,7 @@
 - Current app/package id:
   - Android: `com.jbrains.mova`
   - iOS bundle id: `com.jbrains.mova`
-- App version in `pubspec.yaml`: `1.0.4+2005`
+- App version in `pubspec.yaml`: `1.0.8+2009`
 
 ## Important Working Rule
 
